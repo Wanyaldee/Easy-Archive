@@ -35,3 +35,5 @@ cargo run -p easy-archive-gui
 ## ライセンス
 
 [MIT License](./LICENSE)
+
+同梱フォント`crates/gui/assets/fonts/NotoSansJP-Regular.otf`（GUIの日本語表示用）は[Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP)を使用しており、[SIL Open Font License 1.1](./crates/gui/assets/fonts/NotoSansJP-LICENSE.txt)の下で配布されています（本体のMITライセンスとは別）。

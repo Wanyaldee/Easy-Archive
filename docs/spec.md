@@ -35,7 +35,7 @@
 
 1. CLIプロトタイプでエンコーディング判定ロジックの動作確認（解凍側、エントリ単位） — 完了。`crates/core/src/main.rs` + `crates/core/src/encoding.rs`。`cargo test`で判定ロジックを検証済み。1つのZIP内にShift-JIS(半角カナ含む/含まない)とUTF-8フラグ付きエントリを混在させた実データでも正しく判定できることを確認済み（rc-zipが失敗するケース）。実データ検証時の付随的な発見は[ADR 0003](./adr/0003-windows11-zip-utf8-default.md)を参照
 2. CLIプロトタイプでZIP圧縮（UTF-8ファイル名）の動作確認 — 完了。`crates/core/src/compress.rs`（`easy-archive compress <出力ZIP> <入力パス...>`）。ファイル/ディレクトリを再帰的に追加し、日本語ファイル名は自動でUTF-8フラグが立つことを`cargo test`と実データ（`unzip`/Pythonでの独立検証）で確認済み
-3. `egui`で最小GUI（ドラッグ&ドロップ→解凍／圧縮） — 完了。`crates/gui`。単一のドロップ領域でZIPファイル(.zip拡張子)なら解凍、それ以外(ディレクトリ/単一ファイル)なら圧縮を自動判別する。詳細設計は[`docs/superpowers/specs/2026-08-23-gui-and-workspace-split-design.md`](./superpowers/specs/2026-08-23-gui-and-workspace-split-design.md)を参照。この変更に伴い`crates/core`(コア+CLI)・`crates/gui`(GUI)の2クレートワークスペースへ再編済み。ただし実際のマウス操作によるドラッグ&ドロップとウィンドウ描画の目視確認は未実施(自動テストで判定ロジックのみ検証済み) — 人手による実機確認が必要。本ツールで圧縮したZIPを本ツールで再度展開すると、ZIP側が既にトップレベルフォルダを含むため`foo/foo/...`のように一段深く展開される（第三者から届く一般的なZIPには影響しない既知の挙動）。
+3. `egui`で最小GUI（ドラッグ&ドロップ→解凍／圧縮） — 完了。`crates/gui`。単一のドロップ領域でZIPファイル(.zip拡張子)なら解凍、それ以外(ディレクトリ/単一ファイル)なら圧縮を自動判別する。詳細設計は[`docs/superpowers/specs/2026-08-23-gui-and-workspace-split-design.md`](./superpowers/specs/2026-08-23-gui-and-workspace-split-design.md)を参照。この変更に伴い`crates/core`(コア+CLI)・`crates/gui`(GUI)の2クレートワークスペースへ再編済み。ウィンドウ描画とNoto Sans JPによる日本語テキスト表示は実機での目視確認済み(文字化けなし)。ただし実際のマウス操作によるドラッグ&ドロップ操作そのものはまだ確認できていない。本ツールで圧縮したZIPを本ツールで再度展開すると、ZIP側が既にトップレベルフォルダを含むため`foo/foo/...`のように一段深く展開される（第三者から届く一般的なZIPには影響しない既知の挙動）。
 4. Nautilus「ここに解凍」「ここを圧縮」スクリプト連携
 5. `.deb`/AppImageパッケージング
 
