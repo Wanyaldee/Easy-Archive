@@ -1,19 +1,31 @@
 use std::env;
 use std::error::Error;
 use std::fs::File;
+use std::path::PathBuf;
 
 use zip::{HasZipMetadata, ZipArchive};
 
+mod compress;
 mod encoding;
 use encoding::decode_entry_name;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let path = env::args()
-        .nth(1)
-        .ok_or("使い方: easy-archive <ZIPファイルパス>")?;
+const USAGE: &str = "使い方:\n  easy-archive list <ZIPファイルパス>\n  easy-archive compress <出力ZIPパス> <入力パス...>";
 
-    let file =
-        File::open(&path).map_err(|e| format!("ファイルを開けませんでした: {path}: {e}"))?;
+fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = env::args().collect();
+
+    match args.get(1).map(String::as_str) {
+        Some("list") => run_list(&args[2..]),
+        Some("compress") => run_compress(&args[2..]),
+        Some(other) => Err(format!("不明なサブコマンドです: {other}\n{USAGE}").into()),
+        None => Err(USAGE.into()),
+    }
+}
+
+fn run_list(rest: &[String]) -> Result<(), Box<dyn Error>> {
+    let path = rest.first().ok_or(USAGE)?;
+
+    let file = File::open(path).map_err(|e| format!("ファイルを開けませんでした: {path}: {e}"))?;
     let mut archive = ZipArchive::new(file)
         .map_err(|e| format!("ZIPとして読み込めませんでした: {path}: {e}"))?;
 
@@ -32,6 +44,22 @@ fn main() -> Result<(), Box<dyn Error>> {
             used.label(),
         );
     }
+
+    Ok(())
+}
+
+fn run_compress(rest: &[String]) -> Result<(), Box<dyn Error>> {
+    if rest.len() < 2 {
+        return Err(USAGE.into());
+    }
+    let output_path = &rest[0];
+    let inputs: Vec<PathBuf> = rest[1..].iter().map(PathBuf::from).collect();
+
+    let file = File::create(output_path)
+        .map_err(|e| format!("出力ファイルを作成できませんでした: {output_path}: {e}"))?;
+    let (_, count) = compress::compress(file, &inputs)?;
+
+    println!("ZIPファイルを作成しました: {output_path} (エントリ数: {count})");
 
     Ok(())
 }
