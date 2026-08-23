@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chardetng = "1.0.0"
 encoding_rs = "0.8.35"
 # 対象は日本の学校・自治体から届く一般的なZIP(deflate/無圧縮)のみ。
 # bzip2/lzma/zstd/暗号化等はスコープ外なのでdeflateのみ有効化。

@@ -14,7 +14,8 @@ description: Easy Archiveのコア設計方針。ZIP読み書き・文字コー�
 ## ZIP読み書きは `zip` クレートに統一
 
 - `rc-zip`は読み取り専用のため不採用。`zip`クレート（MIT）で読み書き両方を行う。
-- ファイル名は `ZipFile::name_raw()` で生バイト列として取得し、`chardetng` + `encoding_rs` で自前デコードする。
+- ファイル名は `ZipFile::name_raw()` で生バイト列として取得し、GPBのUTF-8フラグが立っていなければ`encoding_rs`でShift-JISとしてデコードを試みる。エラーなく成功すればShift-JIS、失敗すればCP437として扱う（`src/encoding.rs`の`decode_entry_name`参照）。
+- `chardetng`による統計的判定は不採用。ファイル名程度の短いバイト列では信頼性が低く、実装時のテストで半角カナ入りShift-JISファイル名をBig5と誤判定することが判明した（`docs/spec.md`「マイルストーン1実装時」追記を参照）。
 - 圧縮時のファイル名エンコーディングは既定でUTF-8（汎用フラグbit11セット）。Shift-JIS等での圧縮出力は対象外。
 
 ## スコープ境界
