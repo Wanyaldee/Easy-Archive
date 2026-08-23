@@ -1,0 +1,24 @@
+{
+  "language": "japanese",
+  "extraKnownMarketplaces": {
+    "wanyaldee-skills": {
+      "source": {
+        "source": "github",
+        "repo": "Wanyaldee/wanyaldee-skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "wanyaldee-skills@wanyaldee-skills": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cargo build*)",
+      "Bash(cargo run*)",
+      "Bash(cargo test*)",
+      "Bash(cargo check*)",
+      "Bash(cargo fmt*)",
+      "Bash(cargo clippy*)"
+    ]
+  }
+}
