@@ -784,6 +784,7 @@ dependencies = [
  "easy-archive-core",
  "eframe",
  "egui",
+ "winit",
 ]
 
 [[package]]
