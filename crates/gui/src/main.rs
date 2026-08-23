@@ -7,8 +7,32 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Easy Archive",
         options,
-        Box::new(|_cc| Ok(Box::new(App::default()))),
+        Box::new(|cc| {
+            setup_japanese_font(&cc.egui_ctx);
+            Ok(Box::new(App::default()))
+        }),
     )
+}
+
+/// UIの日本語テキスト(ドロップ領域の案内文・結果メッセージ)を正しく表示する
+/// ため、Noto Sans JPをegui既定のプロポーショナルフォントの先頭に追加する。
+/// eguiの同梱フォントは日本語グリフを含まないため、これをしないと豆腐
+/// (□)になる。ライセンスは`assets/fonts/NotoSansJP-LICENSE.txt`(SIL OFL)参照。
+fn setup_japanese_font(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "NotoSansJP".to_owned(),
+        egui::FontData::from_static(include_bytes!(
+            "../assets/fonts/NotoSansJP-Regular.otf"
+        ))
+        .into(),
+    );
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "NotoSansJP".to_owned());
+    ctx.set_fonts(fonts);
 }
 
 #[derive(Default)]
