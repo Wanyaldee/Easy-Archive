@@ -20,7 +20,17 @@ Linux向けGUIアーカイバ（PeaZip, Xarchiver, Arkなど）は文字コー�
 
 ## ステータス
 
-技術検証フェーズ。まだ実装は開始していない。
+マイルストーン1〜3完了。文字コード自動判定付きのCLI（`list`/`compress`/`extract`）と、ドラッグ&ドロップで解凍・圧縮できるGUIを実装済み。詳細・今後のマイルストーンは [`docs/spec.md`](./docs/spec.md) を参照。
+
+### ビルド・実行
+
+```sh
+# CLI（listの例。compress/extractサブコマンドもあり）
+cargo run -p easy-archive-core --bin easy-archive -- list <ZIPパス>
+
+# GUI
+cargo run -p easy-archive-gui
+```
 
 ## ライセンス
 

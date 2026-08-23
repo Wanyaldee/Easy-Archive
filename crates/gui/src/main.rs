@@ -80,10 +80,18 @@ fn do_extract(zip_path: &Path) -> String {
 }
 
 fn do_compress(source: &Path) -> String {
-    let (Some(parent), Some(stem)) = (source.parent(), source.file_stem().and_then(|s| s.to_str())) else {
+    // ディレクトリには「拡張子」の概念がないため、file_stem()で`.`以降を
+    // 切り落とすとファイル名が壊れる(例: "R7.4 名簿" → "R7")。
+    // ディレクトリはfile_name()、ファイルはfile_stem()を使う。
+    let name = if source.is_dir() {
+        source.file_name().and_then(|s| s.to_str())
+    } else {
+        source.file_stem().and_then(|s| s.to_str())
+    };
+    let (Some(parent), Some(name)) = (source.parent(), name) else {
         return format!("パスを解析できませんでした: {}", source.display());
     };
-    let output_path = parent.join(format!("{stem}.zip"));
+    let output_path = parent.join(format!("{name}.zip"));
 
     if output_path.exists() {
         return format!("既に存在します: {}", output_path.display());
@@ -149,6 +157,25 @@ mod tests {
 
         let expected_zip = dir.join("reports.zip");
         assert!(expected_zip.exists());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn handle_drop_compresses_directory_with_dot_in_name() {
+        let dir = temp_dir("dotdir");
+        // "R7.4"のような、年度表記等で"."を含む自治体・学校の実在フォルダ名を想定。
+        let source = dir.join("R7.4");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("a.txt"), b"a").unwrap();
+
+        let msg = handle_drop(&[source.clone()]);
+        assert!(msg.contains("作成しました"), "unexpected message: {msg}");
+
+        // file_stem()だと"R7.zip"になってしまうバグの回帰テスト。
+        let expected_zip = dir.join("R7.4.zip");
+        assert!(expected_zip.exists(), "expected {} to exist", expected_zip.display());
+        assert!(!dir.join("R7.zip").exists());
 
         std::fs::remove_dir_all(&dir).ok();
     }

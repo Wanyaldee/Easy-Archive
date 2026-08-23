@@ -5,8 +5,7 @@
 
 use std::error::Error;
 use std::fs::{self, File};
-use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use zip::{HasZipMetadata, ZipArchive};
 
@@ -28,6 +27,21 @@ pub fn extract(zip_path: &Path, dest_dir: &Path) -> Result<usize, Box<dyn Error>
     fs::create_dir_all(dest_dir)
         .map_err(|e| format!("展開先を作成できませんでした: {}: {e}", dest_dir.display()))?;
 
+    // 途中でエラーになった場合は、作成済みのdest_dirを丸ごと削除してから
+    // エラーを伝播する(再試行できるようにするため)。
+    match extract_entries(&mut archive, dest_dir) {
+        Ok(count) => Ok(count),
+        Err(e) => {
+            let _ = fs::remove_dir_all(dest_dir);
+            Err(e)
+        }
+    }
+}
+
+fn extract_entries(
+    archive: &mut ZipArchive<File>,
+    dest_dir: &Path,
+) -> Result<usize, Box<dyn Error>> {
     let mut count = 0usize;
     for i in 0..archive.len() {
         let (name, is_dir) = {
@@ -38,6 +52,13 @@ pub fn extract(zip_path: &Path, dest_dir: &Path) -> Result<usize, Box<dyn Error>
             let (name, _used) = decode_entry_name(entry.name_raw(), utf8_flag_set);
             (name, entry.is_dir())
         };
+
+        if Path::new(&name)
+            .components()
+            .any(|c| !matches!(c, Component::Normal(_)))
+        {
+            return Err(format!("安全でないエントリ名です: {name}").into());
+        }
         let out_path = dest_dir.join(&name);
 
         if is_dir {
@@ -56,11 +77,9 @@ pub fn extract(zip_path: &Path, dest_dir: &Path) -> Result<usize, Box<dyn Error>
         let mut entry = archive
             .by_index(i)
             .map_err(|e| format!("エントリ {i} の読み込みに失敗しました: {e}"))?;
-        let mut buf = Vec::new();
-        entry
-            .read_to_end(&mut buf)
-            .map_err(|e| format!("読み込みに失敗しました: {}: {e}", out_path.display()))?;
-        fs::write(&out_path, &buf)
+        let mut out_file = File::create(&out_path)
+            .map_err(|e| format!("書き込みに失敗しました: {}: {e}", out_path.display()))?;
+        std::io::copy(&mut entry, &mut out_file)
             .map_err(|e| format!("書き込みに失敗しました: {}: {e}", out_path.display()))?;
         count += 1;
     }
@@ -72,7 +91,7 @@ pub fn extract(zip_path: &Path, dest_dir: &Path) -> Result<usize, Box<dyn Error>
 mod tests {
     use super::*;
     use crate::compress;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::path::PathBuf;
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -89,6 +108,20 @@ mod tests {
     fn make_test_zip(zip_path: &Path, inputs: &[PathBuf]) {
         let file = std::fs::File::create(zip_path).unwrap();
         compress::compress(file, inputs).unwrap();
+    }
+
+    /// `zip`クレートは書き込み時にエントリ名をサニタイズしないため、
+    /// `..`や絶対パスを含む生のエントリ名でもそのままZIPに書き込める。
+    /// zip-slip検証用のテストZIPを作るためのヘルパー。
+    fn make_raw_test_zip(zip_path: &Path, entry_names: &[&str]) {
+        let file = std::fs::File::create(zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        for name in entry_names {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(b"content").unwrap();
+        }
+        zip.finish().unwrap();
     }
 
     #[test]
@@ -160,6 +193,56 @@ mod tests {
 
         let result = extract(&zip_path, &dest);
         assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn extract_rejects_parent_dir_traversal_entry() {
+        let dir = temp_dir("zipslip-parent");
+        let zip_path = dir.join("evil.zip");
+        make_raw_test_zip(&zip_path, &["../escaped.txt"]);
+
+        let dest = dir.join("extracted");
+        let result = extract(&zip_path, &dest);
+        assert!(result.is_err());
+
+        // dest_dirの外(dirの親)に書き出されていないことを確認する。
+        let escape_target = dir.parent().unwrap().join("escaped.txt");
+        assert!(!escape_target.exists());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn extract_rejects_absolute_path_entry() {
+        let dir = temp_dir("zipslip-abs");
+        let zip_path = dir.join("evil.zip");
+        make_raw_test_zip(&zip_path, &["/tmp/easy-archive-zipslip-abs-escape.txt"]);
+
+        let dest = dir.join("extracted");
+        let result = extract(&zip_path, &dest);
+        assert!(result.is_err());
+
+        let escape_target = Path::new("/tmp/easy-archive-zipslip-abs-escape.txt");
+        assert!(!escape_target.exists());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn extract_removes_partial_dest_dir_on_failure() {
+        let dir = temp_dir("partial-cleanup");
+        let zip_path = dir.join("evil.zip");
+        // 1件目は正常に展開されるエントリ、2件目でzip-slip検知により失敗する。
+        make_raw_test_zip(&zip_path, &["ok.txt", "../escaped.txt"]);
+
+        let dest = dir.join("extracted");
+        let result = extract(&zip_path, &dest);
+        assert!(result.is_err());
+
+        // 途中で作成されたdest_dirが後始末され、再試行可能な状態になっていることを確認する。
+        assert!(!dest.exists());
 
         std::fs::remove_dir_all(&dir).ok();
     }
