@@ -18,15 +18,24 @@ Easy-Archive/
 ├── CLAUDE.md
 ├── README.md
 ├── LICENSE                # MIT
+├── Cargo.toml              # ワークスペース定義
+├── crates/
+│   ├── core/                # Issue #1「コア」— 判定ロジック・ZIP読み書き・CLI
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── main.rs       # CLI(list/compress/extract)
+│   │       ├── compress.rs
+│   │       ├── encoding.rs
+│   │       └── extract.rs
+│   └── gui/                 # Issue #2「GUI」
+│       └── src/
+│           └── main.rs
 ├── docs/
 │   ├── spec.md             # 仕様書（確定している仕様のみ）
 │   └── adr/                # 技術的決定の経緯・検証結果・議論（番号順）
 │       ├── 0001-zip-crate-over-rc-zip.md
 │       ├── 0002-drop-chardetng-strict-decode.md
 │       └── 0003-windows11-zip-utf8-default.md
-├── src/
-│   ├── main.rs              # CLI
-│   └── encoding.rs          # 文字コード判定・デコードロジック
 └── .claude/
     ├── settings.json       # プロジェクト共有設定（プラグイン・権限・言語）
     └── skills/

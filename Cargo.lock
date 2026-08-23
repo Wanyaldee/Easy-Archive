@@ -30,12 +30,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "easy-archive"
+name = "easy-archive-core"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
  "zip",
 ]
+
+[[package]]
+name = "easy-archive-gui"
+version = "0.1.0"
 
 [[package]]
 name = "encoding_rs"

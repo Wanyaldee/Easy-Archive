@@ -5,9 +5,8 @@ use std::path::PathBuf;
 
 use zip::{HasZipMetadata, ZipArchive};
 
-mod compress;
-mod encoding;
-use encoding::decode_entry_name;
+use easy_archive_core::compress;
+use easy_archive_core::encoding::decode_entry_name;
 
 const USAGE: &str = "使い方:\n  easy-archive list <ZIPファイルパス>\n  easy-archive compress <出力ZIPパス> <入力パス...>";
 

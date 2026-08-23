@@ -1,0 +1,18 @@
+[package]
+name = "easy-archive-core"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "easy_archive_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "easy-archive"
+path = "src/main.rs"
+
+[dependencies]
+encoding_rs = "0.8.35"
+# 対象は日本の学校・自治体から届く一般的なZIP(deflate/無圧縮)のみ。
+# bzip2/lzma/zstd/暗号化等はスコープ外なのでdeflateのみ有効化。
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
