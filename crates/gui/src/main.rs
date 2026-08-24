@@ -1,9 +1,17 @@
 use std::path::{Path, PathBuf};
 
 use easy_archive_core::{compress, extract};
+use winit::platform::x11::EventLoopBuilderExtX11;
 
 fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions::default();
+    let mut options = eframe::NativeOptions::default();
+    // winitのWaylandバックエンドはファイルドロップ(WindowEvent::DroppedFile)を
+    // 実装していない(X11/Windows/macOSのみ実装)ため、Waylandセッション上では
+    // ドラッグ&ドロップが一切反応しない。対象OS(Ubuntu/Zorin OS)は標準で
+    // XWaylandを同梱しているため、X11バックエンドを強制してこれを回避する。
+    options.event_loop_builder = Some(Box::new(|builder| {
+        builder.with_x11();
+    }));
     eframe::run_native(
         "Easy Archive",
         options,

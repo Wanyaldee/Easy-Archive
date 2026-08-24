@@ -24,6 +24,13 @@ Linux向けGUIアーカイバ（PeaZip, Xarchiver, Arkなど）は文字コー�
 
 ### ビルド・実行
 
+GUIのビルドには`eframe`/`winit`が必要とするシステムパッケージが要る（Ubuntu/Zorin OS）:
+
+```sh
+sudo apt update
+sudo apt install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+```
+
 ```sh
 # CLI（listの例。compress/extractサブコマンドもあり）
 cargo run -p easy-archive-core --bin easy-archive -- list <ZIPパス>
@@ -31,6 +38,8 @@ cargo run -p easy-archive-core --bin easy-archive -- list <ZIPパス>
 # GUI
 cargo run -p easy-archive-gui
 ```
+
+Rustツールチェーンが未導入なら[rustup](https://rustup.rs/)（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`）でインストールする。
 
 ## ライセンス
 
