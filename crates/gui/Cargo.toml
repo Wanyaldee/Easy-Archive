@@ -16,7 +16,11 @@ maintainer = "Wanyaldee <gooya.3322@gmail.com>"
 copyright = "2026, Wanyaldee <gooya.3322@gmail.com>"
 license-file = ["../../LICENSE", "0"]
 extended-description = "文字コードを自動判定するZIP解凍・圧縮ツール。日本の学校・自治体などから届くShift-JISファイル名のZIPを文字化けさせずに扱えます。"
-depends = "$auto"
+# `$auto`(dpkg-shlibdeps)はELFの動的リンク(DT_NEEDED)しか見ないため、winitの
+# x11バックエンド(x11-dl経由)が実行時にdlopen(3)するX11系ライブラリを検出でき
+# ない。`.desktop`は`Terminal=false`のため、これらが欠けた環境ではウィンドウが
+# 無言で起動しないだけになる。7ライブラリを手動で補完する(詳細はADR 0007)。
+depends = "$auto, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libxkbcommon0, libxkbcommon-x11-0"
 section = "utils"
 priority = "optional"
 # assetsのソースパスは2種類の起点が混在する: "target/release/..."はcargo-debが
@@ -24,7 +28,8 @@ priority = "optional"
 # 解決するため、このCargo.tomlのディレクトリ(crates/gui)を起点とした文字通りの
 # 相対パスではない(crates/gui/targetは存在しない)。一方"../../packaging/..."の
 # 静的アセットはCargo.tomlのあるディレクトリ(crates/gui)を起点とした文字通りの
-# 相対パスとして解決される(ワークスペースルート起点にすると見つからない)。
+# 相対パスとして解決される(ワークスペースルート起点にすると見つからないと
+# 推測されるが、この逆方向は実際には試しておらず未検証)。
 # 1回目の試行(このtarget/release起点+../../packaging起点の組み合わせ)で
 # `cargo deb --no-build`が成功することをcargo-deb 3.7.0で実地検証済み。
 maintainer-scripts = "../../packaging/debian"

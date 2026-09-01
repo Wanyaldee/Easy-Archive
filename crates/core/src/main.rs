@@ -98,7 +98,7 @@ fn home_dir() -> Result<PathBuf, Box<dyn Error>> {
 }
 
 fn thunar_uca_xml_path(home: &Path) -> PathBuf {
-    home.join(".config/Thunar/uca.xml")
+    home.join(thunar::THUNAR_UCA_RELATIVE_PATH)
 }
 
 fn run_install_integration(rest: &[String]) -> Result<(), Box<dyn Error>> {

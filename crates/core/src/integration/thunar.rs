@@ -17,6 +17,13 @@ use quick_xml::reader::Reader;
 
 use super::GeneratedFile;
 
+/// `uca.xml`のホームディレクトリからの相対パス。`install_all`/`is_installed`
+/// (`super`)に加えて、別クレートとしてビルドされるCLIバイナリ
+/// (`crates/core/src/main.rs`の`thunar_uca_xml_path`)からも参照するため、
+/// `EXTRACT_UNIQUE_ID`のような`pub(crate)`ではなく`pub`にしてある。
+/// 文字列リテラルを各所に散らさず、ここを唯一の定義箇所とする。
+pub const THUNAR_UCA_RELATIVE_PATH: &str = ".config/Thunar/uca.xml";
+
 pub(crate) const EXTRACT_UNIQUE_ID: &str = "easy-archive-extract-here";
 const COMPRESS_UNIQUE_ID: &str = "easy-archive-compress-here";
 
@@ -49,7 +56,7 @@ pub fn merge(existing: Option<&str>, binary_path: &str) -> Result<GeneratedFile,
     };
 
     Ok(GeneratedFile {
-        relative_path: std::path::PathBuf::from(".config/Thunar/uca.xml"),
+        relative_path: std::path::PathBuf::from(THUNAR_UCA_RELATIVE_PATH),
         content,
         executable: false,
     })
@@ -180,7 +187,7 @@ mod tests {
 
         assert_eq!(
             result.relative_path,
-            std::path::PathBuf::from(".config/Thunar/uca.xml")
+            std::path::PathBuf::from(THUNAR_UCA_RELATIVE_PATH)
         );
         assert!(!result.executable);
         assert!(result.content.contains(EXTRACT_UNIQUE_ID));

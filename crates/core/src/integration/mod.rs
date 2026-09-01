@@ -46,11 +46,16 @@ pub fn all_generated_files(
     Ok(files)
 }
 
-/// 対応する全ファイルマネージャー分の統合ファイルを実際に`home`配下へ書き込む。
+/// 対応する主要ファイルマネージャー(Nautilus/Nemo/Thunar/Dolphin/PCManFM-Qt)
+/// に「ここに解凍」「ここを圧縮」の右クリックメニューを設置する。環境検出は
+/// せず、対応する全ファイルマネージャー分のファイルを無条件に配置する
+/// (該当ファイルマネージャーが未インストールでも実害はないため。詳細は
+/// ADR 0005を参照)。
+///
 /// 戻り値は書き込んだファイルの絶対パス一覧。CLIの`install-integration`と
 /// GUIの設置ボタンの両方から呼ばれる共通のインストール処理。
 pub fn install_all(home: &Path, binary_path: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let existing_uca = fs::read_to_string(home.join(".config/Thunar/uca.xml")).ok();
+    let existing_uca = fs::read_to_string(home.join(thunar::THUNAR_UCA_RELATIVE_PATH)).ok();
     let files = all_generated_files(binary_path, existing_uca.as_deref())?;
 
     let mut written = Vec::new();
@@ -84,7 +89,7 @@ pub fn install_all(home: &Path, binary_path: &str) -> Result<Vec<PathBuf>, Box<d
 /// ではなく中身に本ツールの目印(`thunar::EXTRACT_UNIQUE_ID`)が含まれるかで
 /// 判定する。
 pub fn is_installed(home: &Path, binary_path: &str) -> Result<bool, Box<dyn Error>> {
-    let existing_uca = fs::read_to_string(home.join(".config/Thunar/uca.xml")).ok();
+    let existing_uca = fs::read_to_string(home.join(thunar::THUNAR_UCA_RELATIVE_PATH)).ok();
     let thunar_installed = existing_uca
         .as_deref()
         .is_some_and(|c| c.contains(thunar::EXTRACT_UNIQUE_ID));
@@ -92,7 +97,7 @@ pub fn is_installed(home: &Path, binary_path: &str) -> Result<bool, Box<dyn Erro
     let files = all_generated_files(binary_path, existing_uca.as_deref())?;
     let others_installed = files
         .iter()
-        .filter(|f| !f.relative_path.ends_with("uca.xml"))
+        .filter(|f| f.relative_path != Path::new(thunar::THUNAR_UCA_RELATIVE_PATH))
         .all(|f| home.join(&f.relative_path).exists());
 
     Ok(thunar_installed && others_installed)
@@ -160,18 +165,27 @@ mod tests {
         fs::remove_dir_all(&home).ok();
     }
 
+    /// Thunar固有の判定(uca.xmlの中身に`EXTRACT_UNIQUE_ID`が含まれるか)が
+    /// 実際に効いていることを確かめる。先に`install_all`で他5ファイルを
+    /// 設置して`others_installed`をtrueにしたうえでuca.xmlだけを無関係な
+    /// 内容へ上書きするため、`is_installed`がfalseを返す理由はThunar側の
+    /// 判定以外にありえない。
     #[test]
     fn is_installed_ignores_unrelated_existing_thunar_actions() {
         let home = temp_home("thunar-unrelated");
-        let thunar_dir = home.join(".config/Thunar");
-        fs::create_dir_all(&thunar_dir).unwrap();
+        install_all(&home, "/usr/bin/easy-archive").unwrap();
+        assert!(is_installed(&home, "/usr/bin/easy-archive").unwrap());
+
         fs::write(
-            thunar_dir.join("uca.xml"),
+            home.join(thunar::THUNAR_UCA_RELATIVE_PATH),
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<actions>\n  <action><unique-id>someone-else</unique-id></action>\n</actions>\n",
         )
         .unwrap();
 
-        assert!(!is_installed(&home, "/usr/bin/easy-archive").unwrap());
+        assert!(
+            !is_installed(&home, "/usr/bin/easy-archive").unwrap(),
+            "他5ファイルが設置済みでも、uca.xmlに本ツールの目印がなければfalseのはず"
+        );
 
         fs::remove_dir_all(&home).ok();
     }

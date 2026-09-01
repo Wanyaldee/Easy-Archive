@@ -25,9 +25,15 @@ if ! command -v cargo >/dev/null 2>&1; then
     fi
 fi
 
+# 以下のビルド手順(必要なaptパッケージ・cargo-debのバージョン・cargo build
+# --release --workspace → cargo deb --no-build)は、.github/workflows/ci.yml の
+# deb-packageジョブと意図的に重複している(このスクリプトは対話的な`read`で確認
+# を取る作りのためCIからそのまま呼べない)。どちらかを変更したらもう一方も
+# 必ず合わせること。
+# ADR 0007のアセットパス解決はcargo-deb 3.7.0で検証済みのため3.7系に固定する。
 if ! cargo deb --version >/dev/null 2>&1; then
     echo "cargo-debが見つかりません。インストールします。"
-    cargo install cargo-deb
+    cargo install cargo-deb --version "^3.7"
 fi
 
 REQUIRED_APT_PACKAGES="libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev"

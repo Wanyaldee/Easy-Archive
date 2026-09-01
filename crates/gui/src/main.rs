@@ -45,18 +45,35 @@ fn setup_japanese_font(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// `install-integration`同様、`$HOME`と自実行ファイルのパスを解決する。
-/// GUIプロセス自身の実行ユーザー権限で動くため、CLIの`install-integration`
-/// と異なりpostinst(root権限)経由では不可能だった統合設置をここで安全に
-/// 行える。
+/// GUIプロセス自身の実行ファイルパスから、隣接するCLIバイナリ(`easy-archive`)
+/// のパスを解決する。ファイルマネージャー統合のExec行はCLIの`auto`サブ
+/// コマンドを呼ぶ設計のため、GUIバイナリ自身のパス(`env::current_exe()`)を
+/// そのまま使うと、統合ファイルがGUIを起動するだけでauto処理を一切実行
+/// しない不具合になる(GUIはargvを読まない設計のため)。同じディレクトリに
+/// 並んでインストールされる前提(.debでは/usr/bin/に両方設置される)で、
+/// 存在すればそのパスを、見つからなければPATH解決に委ねる文字列
+/// "easy-archive"にフォールバックする。
+fn resolve_cli_binary_path() -> Result<String, String> {
+    let current_exe =
+        env::current_exe().map_err(|e| format!("実行ファイルのパスを取得できませんでした: {e}"))?;
+    let cli_path = current_exe
+        .parent()
+        .map(|dir| dir.join("easy-archive"))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| PathBuf::from("easy-archive"));
+    Ok(cli_path.to_string_lossy().into_owned())
+}
+
+/// `install-integration`同様、`$HOME`とファイルマネージャー統合が呼ぶべき
+/// バイナリのパスを解決する。GUIプロセス自身の実行ユーザー権限で動くため、
+/// CLIの`install-integration`と異なりpostinst(root権限)経由では不可能だった
+/// 統合設置をここで安全に行える。バイナリのパスはGUI自身ではなく隣接する
+/// CLI(`resolve_cli_binary_path`)を指す点に注意。
 fn resolve_home_and_binary() -> Result<(PathBuf, String), String> {
     let home = env::var("HOME")
         .map(PathBuf::from)
         .map_err(|_| "HOME環境変数が設定されていません".to_string())?;
-    let binary_path = env::current_exe()
-        .map_err(|e| format!("実行ファイルのパスを取得できませんでした: {e}"))?
-        .to_string_lossy()
-        .into_owned();
+    let binary_path = resolve_cli_binary_path()?;
     Ok((home, binary_path))
 }
 
@@ -198,6 +215,25 @@ mod tests {
         assert!(!dir.join("b.zip").exists());
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// ファイルマネージャー統合のExec行はCLIの`auto`サブコマンドを呼ぶ設計
+    /// のため、GUIバイナリ自身のパスを埋め込むと右クリックメニューが何も
+    /// しなくなる(GUIはargvを読まない)。この回帰を防ぐためのテスト。
+    /// なお`cargo test`環境では`current_exe()`が`target/debug/deps/`配下の
+    /// テストランナーを指し、そこに`easy-archive`は並んでいないため、実際に
+    /// 通るのはPATHフォールバック側の枝になる(文字列の契約は同じく検証できる)。
+    #[test]
+    fn resolve_cli_binary_path_never_returns_the_gui_binary_itself() {
+        let path = resolve_cli_binary_path().unwrap();
+        assert!(
+            path.ends_with("easy-archive"),
+            "CLIバイナリを指しているはず: {path}"
+        );
+        assert!(
+            !path.ends_with("easy-archive-gui"),
+            "GUIバイナリ自身を指してはいけない: {path}"
+        );
     }
 
     /// `HOME`環境変数を書き換えるテスト同士を直列化するための排他ロック。
