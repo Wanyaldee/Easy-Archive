@@ -1,5 +1,9 @@
 # Easy Archive
 
+<p align="center">
+  <img src="packaging/icons/easy-archive.svg" width="120" alt="Easy Archive ロゴ">
+</p>
+
 文字コードを自動判定してくれる、日本の学校・自治体向けZIP解凍・圧縮GUIツール。
 
 ## 背景

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- モチーフ・配色・字形実装(フォント依存)の決定経緯: docs/adr/0006-app-icon-design.md -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Easy Archive">
+  <title>Easy Archive</title>
+  <defs>
+    <linearGradient id="gradOrange" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E8791A"/>
+      <stop offset="1" stop-color="#F5A855"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#gradOrange)"/>
+  <line x1="128" y1="24" x2="128" y2="172" stroke="#C4590E" stroke-width="10" stroke-dasharray="2 15" stroke-linecap="round"/>
+  <rect x="111" y="146" width="34" height="48" rx="11" fill="#C4590E"/>
+  <circle cx="188" cy="188" r="47" fill="#FBF3E7"/>
+  <text x="188" y="206" text-anchor="middle" font-family="'Noto Sans JP','Zen Maru Gothic',sans-serif" font-weight="700" font-size="56" fill="#7A3B0A">あ</text>
+</svg>
