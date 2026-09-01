@@ -15,3 +15,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --workspace --verbose
       - run: cargo test --workspace --verbose
+  deb-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GUI build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deb
+      - run: cargo build --release --workspace
+      - run: (cd crates/gui && cargo deb --no-build)
+      - name: Verify .deb contents
+        run: |
+          DEB=$(find target/debian -maxdepth 1 -name "*.deb" | head -1)
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB" | tee /tmp/deb-contents.txt
+          grep -q "usr/bin/easy-archive$" /tmp/deb-contents.txt
+          grep -q "usr/bin/easy-archive-gui$" /tmp/deb-contents.txt
+          grep -q "usr/share/applications/easy-archive.desktop$" /tmp/deb-contents.txt
+          grep -q "usr/share/icons/hicolor/scalable/apps/easy-archive.svg$" /tmp/deb-contents.txt
