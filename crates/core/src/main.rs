@@ -1,15 +1,16 @@
 use std::env;
 use std::error::Error;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use zip::{HasZipMetadata, ZipArchive};
 
+use easy_archive_core::auto;
 use easy_archive_core::compress;
 use easy_archive_core::encoding::decode_entry_name;
 use easy_archive_core::extract;
 
-const USAGE: &str = "使い方:\n  easy-archive list <ZIPファイルパス>\n  easy-archive compress <出力ZIPパス> <入力パス...>\n  easy-archive extract <ZIPファイルパス> <展開先ディレクトリ>";
+const USAGE: &str = "使い方:\n  easy-archive list <ZIPファイルパス>\n  easy-archive compress <出力ZIPパス> <入力パス...>\n  easy-archive extract <ZIPファイルパス> <展開先ディレクトリ>\n  easy-archive auto <パス>";
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
@@ -18,6 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some("list") => run_list(&args[2..]),
         Some("compress") => run_compress(&args[2..]),
         Some("extract") => run_extract(&args[2..]),
+        Some("auto") => run_auto(&args[2..]),
         Some(other) => Err(format!("不明なサブコマンドです: {other}\n{USAGE}").into()),
         None => Err(USAGE.into()),
     }
@@ -76,5 +78,12 @@ fn run_extract(rest: &[String]) -> Result<(), Box<dyn Error>> {
 
     println!("{} に展開しました(エントリ数: {count})", dest_dir.display());
 
+    Ok(())
+}
+
+fn run_auto(rest: &[String]) -> Result<(), Box<dyn Error>> {
+    let path = rest.first().ok_or(USAGE)?;
+    let message = auto::auto(Path::new(path))?;
+    println!("{message}");
     Ok(())
 }
