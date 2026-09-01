@@ -2,9 +2,35 @@
 name = "easy-archive-gui"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 easy-archive-core = { version = "0.1.0", path = "../core" }
 eframe = "0.36.1"
 egui = "0.36.1"
 winit = { version = "0.30.13", default-features = false, features = ["x11"] }
+
+[package.metadata.deb]
+name = "easy-archive"
+maintainer = "Wanyaldee <gooya.3322@gmail.com>"
+copyright = "2026, Wanyaldee <gooya.3322@gmail.com>"
+license-file = ["../../LICENSE", "0"]
+extended-description = "文字コードを自動判定するZIP解凍・圧縮ツール。日本の学校・自治体などから届くShift-JISファイル名のZIPを文字化けさせずに扱えます。"
+depends = "$auto"
+section = "utils"
+priority = "optional"
+# assetsのソースパスは2種類の起点が混在する: "target/release/..."はcargo-debが
+# `cargo metadata`のtarget_directory(常にワークスペースルートのtarget/)経由で
+# 解決するため、このCargo.tomlのディレクトリ(crates/gui)を起点とした文字通りの
+# 相対パスではない(crates/gui/targetは存在しない)。一方"../../packaging/..."の
+# 静的アセットはCargo.tomlのあるディレクトリ(crates/gui)を起点とした文字通りの
+# 相対パスとして解決される(ワークスペースルート起点にすると見つからない)。
+# 1回目の試行(このtarget/release起点+../../packaging起点の組み合わせ)で
+# `cargo deb --no-build`が成功することをcargo-deb 3.7.0で実地検証済み。
+maintainer-scripts = "../../packaging/debian"
+assets = [
+    ["target/release/easy-archive-gui", "usr/bin/", "755"],
+    ["target/release/easy-archive", "usr/bin/", "755"],
+    ["../../packaging/easy-archive.desktop", "usr/share/applications/easy-archive.desktop", "644"],
+    ["../../packaging/icons/easy-archive.svg", "usr/share/icons/hicolor/scalable/apps/easy-archive.svg", "644"],
+]
