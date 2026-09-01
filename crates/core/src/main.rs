@@ -1,7 +1,6 @@
 use std::env;
 use std::error::Error;
 use std::fs::{self, File};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use zip::{HasZipMetadata, ZipArchive};
@@ -102,11 +101,6 @@ fn thunar_uca_xml_path(home: &Path) -> PathBuf {
     home.join(".config/Thunar/uca.xml")
 }
 
-/// 対応する主要ファイルマネージャー(Nautilus/Nemo/Thunar/Dolphin/PCManFM-Qt)
-/// に「ここに解凍」「ここを圧縮」の右クリックメニューを設置する。環境検出は
-/// せず、対応する全ファイルマネージャー分のファイルを無条件に配置する
-/// (該当ファイルマネージャーが未インストールでも実害はないため。詳細は
-/// ADR 0005を参照)。
 fn run_install_integration(rest: &[String]) -> Result<(), Box<dyn Error>> {
     let dry_run = rest.iter().any(|a| a == "--dry-run");
 
@@ -116,36 +110,21 @@ fn run_install_integration(rest: &[String]) -> Result<(), Box<dyn Error>> {
         .into_owned();
     let home = home_dir()?;
 
-    let existing_uca = fs::read_to_string(thunar_uca_xml_path(&home)).ok();
-    let files = integration::all_generated_files(&binary_path, existing_uca.as_deref())?;
-
-    for file in &files {
-        let target = home.join(&file.relative_path);
-        if dry_run {
+    if dry_run {
+        let existing_uca = fs::read_to_string(thunar_uca_xml_path(&home)).ok();
+        let files = integration::all_generated_files(&binary_path, existing_uca.as_deref())?;
+        for file in &files {
+            let target = home.join(&file.relative_path);
             println!(
                 "[dry-run] {}{}",
                 target.display(),
                 if file.executable { " (実行可能)" } else { "" }
             );
-            continue;
         }
+        return Ok(());
+    }
 
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("ディレクトリを作成できませんでした: {}: {e}", parent.display()))?;
-        }
-        fs::write(&target, &file.content)
-            .map_err(|e| format!("書き込みに失敗しました: {}: {e}", target.display()))?;
-
-        if file.executable {
-            let mut perms = fs::metadata(&target)
-                .map_err(|e| format!("権限を取得できませんでした: {}: {e}", target.display()))?
-                .permissions();
-            perms.set_mode(perms.mode() | 0o755);
-            fs::set_permissions(&target, perms)
-                .map_err(|e| format!("実行権限を設定できませんでした: {}: {e}", target.display()))?;
-        }
-
+    for target in integration::install_all(&home, &binary_path)? {
         println!("設置しました: {}", target.display());
     }
 

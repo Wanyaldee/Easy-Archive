@@ -17,7 +17,7 @@ use quick_xml::reader::Reader;
 
 use super::GeneratedFile;
 
-const EXTRACT_UNIQUE_ID: &str = "easy-archive-extract-here";
+pub(crate) const EXTRACT_UNIQUE_ID: &str = "easy-archive-extract-here";
 const COMPRESS_UNIQUE_ID: &str = "easy-archive-compress-here";
 
 const EMPTY_UCA_XML: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<actions>\n</actions>\n";
