@@ -26,10 +26,12 @@ pub fn generate(binary_path: &str) -> GeneratedFile {
              path=$(printf '%s\\n' \"$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS\" | head -n1)\n\
              message=$(\"{binary_path}\" auto \"$path\" 2>&1)\n\
              status=$?\n\
-             if [ \"$status\" -eq 0 ]; then\n\
-             \x20\x20\x20\x20notify-send \"Easy Archive\" \"$message\"\n\
-             else\n\
-             \x20\x20\x20\x20notify-send -u critical \"Easy Archive\" \"$message\"\n\
+             if command -v notify-send >/dev/null 2>&1; then\n\
+             \x20\x20\x20\x20if [ \"$status\" -eq 0 ]; then\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20notify-send \"Easy Archive\" \"$message\"\n\
+             \x20\x20\x20\x20else\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20notify-send -u critical \"Easy Archive\" \"$message\"\n\
+             \x20\x20\x20\x20fi\n\
              fi\n"
         ),
         executable: true,
@@ -53,5 +55,14 @@ mod tests {
         assert!(file.content.contains("NAUTILUS_SCRIPT_SELECTED_FILE_PATHS"));
         assert!(file.content.contains("\"/usr/bin/easy-archive\" auto \"$path\""));
         assert!(file.content.contains("notify-send"));
+    }
+
+    #[test]
+    fn guards_notify_send_call_with_command_dash_v() {
+        let file = generate("/usr/bin/easy-archive");
+
+        // notify-send未インストール環境(実際のWSL開発環境で確認済み)でも
+        // "command not found"エラーで異常終了しないことを保証する。
+        assert!(file.content.contains("if command -v notify-send >/dev/null 2>&1; then"));
     }
 }
