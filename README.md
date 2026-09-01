@@ -26,6 +26,20 @@ Linux向けGUIアーカイバ（PeaZip, Xarchiver, Arkなど）は文字コー�
 
 マイルストーン1〜3完了。マイルストーン4（主要ファイルマネージャーの右クリックメニュー統合）は実装完了、実機検証待ち。文字コード自動判定付きのCLI（`list`/`compress`/`extract`/`auto`）と、ドラッグ&ドロップで解凍・圧縮できるGUI、主要ファイルマネージャーへの右クリックメニュー連携を実装済み。詳細・今後のマイルストーンは [`docs/spec.md`](./docs/spec.md) を参照。
 
+### インストール(.debパッケージ)
+
+Ubuntu/Zorin OSでは、ビルド済みの`.deb`ファイルをファイルマネージャーで**ダブルクリック**すればGUIのソフトウェアインストーラーが起動し、インストールできます(ターミナル操作は不要です)。インストール後、GUI(Easy Archive)を起動すると、初回のみ画面上部に「ファイルマネージャーの右クリックメニューにEasy Archiveを追加できます。」というバナーが表示されるので、「設置する」ボタンを押すとNautilus/Nemo/Thunar/Dolphin/PCManFM-Qtへの右クリックメニュー統合が完了します。
+
+開発者・貢献者が`.deb`をビルドする場合:
+
+```sh
+./packaging/build-deb.sh
+```
+
+Rust未導入の環境でも、rustup/`cargo-deb`/GUIビルド用aptパッケージの不足を検知し、確認の上で自動セットアップしてからビルドします。生成された`.deb`は`target/debian/`以下に出力されます。
+
+(ターミナルでのインストール/アンインストールは`sudo dpkg -i target/debian/easy-archive_*.deb` / `sudo apt-get remove easy-archive`でも可能です。)
+
 ### ビルド・実行
 
 GUIのビルドには`eframe`/`winit`が必要とするシステムパッケージが要る（Ubuntu/Zorin OS）:
