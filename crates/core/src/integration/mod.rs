@@ -18,6 +18,7 @@ pub mod nemo;
 pub mod pcmanfm_qt;
 pub mod thunar;
 
+use std::error::Error;
 use std::path::PathBuf;
 
 /// ファイルマネージャー統合のために生成する1ファイル分の情報。
@@ -27,4 +28,42 @@ pub struct GeneratedFile {
     pub relative_path: PathBuf,
     pub content: String,
     pub executable: bool,
+}
+
+/// 対応する全ファイルマネージャー分の統合ファイルをまとめて生成する。
+/// Thunarのみ既存の`uca.xml`(存在すれば)を渡して冪等マージする。
+pub fn all_generated_files(
+    binary_path: &str,
+    existing_thunar_uca_xml: Option<&str>,
+) -> Result<Vec<GeneratedFile>, Box<dyn Error>> {
+    let mut files = nemo::generate(binary_path);
+    files.push(dolphin::generate(binary_path));
+    files.push(nautilus::generate(binary_path));
+    files.push(pcmanfm_qt::generate(binary_path));
+    files.push(thunar::merge(existing_thunar_uca_xml, binary_path)?);
+    Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_generated_files_covers_every_supported_file_manager() {
+        let files = all_generated_files("/usr/bin/easy-archive", None).unwrap();
+
+        // Nemo(2) + Dolphin(1) + Nautilus(1) + PCManFM-Qt(1) + Thunar(1) = 6
+        assert_eq!(files.len(), 6);
+
+        let paths: Vec<String> = files
+            .iter()
+            .map(|f| f.relative_path.to_string_lossy().into_owned())
+            .collect();
+        assert!(paths.iter().any(|p| p.contains("nemo/actions") && p.contains("extract")));
+        assert!(paths.iter().any(|p| p.contains("nemo/actions") && p.contains("compress")));
+        assert!(paths.iter().any(|p| p.contains("kio/servicemenus")));
+        assert!(paths.iter().any(|p| p.contains("nautilus/scripts")));
+        assert!(paths.iter().any(|p| p.contains("file-manager/actions")));
+        assert!(paths.iter().any(|p| p.contains(".config/Thunar/uca.xml")));
+    }
 }

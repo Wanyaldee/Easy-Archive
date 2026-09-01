@@ -109,6 +109,67 @@ fn find_actions_close_tag_offset(xml: &str) -> Result<usize, Box<dyn Error>> {
     }
 }
 
+/// `merge`で追加した2つの`<action>`要素だけを取り除いた新しい内容を返す。
+/// 固定`<unique-id>`が一致する`<action>`要素だけを対象とし、それ以外の
+/// ユーザー独自のカスタムアクションはそのまま保持する。
+pub fn remove(existing: &str) -> Result<String, Box<dyn Error>> {
+    let mut reader = Reader::from_str(existing);
+    reader.config_mut().trim_text(false);
+
+    let mut spans_to_remove: Vec<(usize, usize)> = Vec::new();
+    let mut action_start: Option<usize> = None;
+    let mut current_unique_id: Option<String> = None;
+    let mut in_unique_id = false;
+
+    loop {
+        let pos_before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if e.name().as_ref() == "action" => {
+                action_start = Some(pos_before);
+                current_unique_id = None;
+            }
+            Ok(Event::Start(e)) if e.name().as_ref() == "unique-id" => {
+                in_unique_id = true;
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == "unique-id" => {
+                in_unique_id = false;
+            }
+            Ok(Event::Text(t)) if in_unique_id => {
+                current_unique_id = Some(t.as_ref().to_owned());
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == "action" => {
+                let pos_after = reader.buffer_position() as usize;
+                if let Some(start) = action_start.take() {
+                    let is_ours = current_unique_id
+                        .as_deref()
+                        .map(|id| id == EXTRACT_UNIQUE_ID || id == COMPRESS_UNIQUE_ID)
+                        .unwrap_or(false);
+                    if is_ours {
+                        spans_to_remove.push((start, pos_after));
+                    }
+                }
+                current_unique_id = None;
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => continue,
+            Err(e) => return Err(format!("uca.xmlの解析に失敗しました: {e}").into()),
+        }
+    }
+
+    if spans_to_remove.is_empty() {
+        return Ok(existing.to_string());
+    }
+
+    let mut result = String::with_capacity(existing.len());
+    let mut last = 0usize;
+    for (start, end) in spans_to_remove {
+        result.push_str(&existing[last..start]);
+        last = end;
+    }
+    result.push_str(&existing[last..]);
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +244,46 @@ mod tests {
     fn assert_actions_close_tag_is_findable(xml: &str) {
         let offset = find_actions_close_tag_offset(xml).unwrap();
         assert_eq!(&xml[offset..offset + "</actions>".len()], "</actions>");
+    }
+
+    #[test]
+    fn remove_strips_only_our_actions_and_keeps_others() {
+        let existing = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+                         <actions>\n\
+                         \x20\x20<action>\n\
+                         \x20\x20\x20\x20<icon>utilities-terminal</icon>\n\
+                         \x20\x20\x20\x20<name>Open Terminal Here</name>\n\
+                         \x20\x20\x20\x20<unique-id>1633867917298852-1</unique-id>\n\
+                         \x20\x20\x20\x20<command>xfce4-terminal --working-directory %f</command>\n\
+                         \x20\x20</action>\n\
+                         </actions>\n";
+
+        let merged = merge(Some(existing), "/usr/bin/easy-archive").unwrap();
+        let removed = remove(&merged.content).unwrap();
+
+        assert!(removed.contains("Open Terminal Here"));
+        assert!(removed.contains("1633867917298852-1"));
+        assert!(!removed.contains(EXTRACT_UNIQUE_ID));
+        assert!(!removed.contains(COMPRESS_UNIQUE_ID));
+        assert!(!removed.contains("ここに解凍"));
+        assert!(!removed.contains("ここを圧縮"));
+
+        // 妥当なXMLのままであることを確認する。
+        assert_actions_close_tag_is_findable(&removed);
+    }
+
+    #[test]
+    fn remove_is_noop_when_our_actions_are_absent() {
+        let existing = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+                         <actions>\n\
+                         \x20\x20<action>\n\
+                         \x20\x20\x20\x20<name>Something Else</name>\n\
+                         \x20\x20\x20\x20<unique-id>other-id</unique-id>\n\
+                         \x20\x20\x20\x20<command>foo %f</command>\n\
+                         \x20\x20</action>\n\
+                         </actions>\n";
+
+        let removed = remove(existing).unwrap();
+        assert_eq!(removed, existing);
     }
 }
