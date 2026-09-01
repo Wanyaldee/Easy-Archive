@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Easy Archive
+Comment=文字コードを自動判定するZIP解凍・圧縮ツール
+Exec=easy-archive-gui %U
+Icon=easy-archive
+Terminal=false
+Categories=Utility;Archiving;
+MimeType=application/zip;
