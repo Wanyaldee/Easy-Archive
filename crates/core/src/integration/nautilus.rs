@@ -19,7 +19,7 @@ const SCRIPT_DIR: &str = ".local/share/nautilus/scripts/Easy Archive";
 
 pub fn generate(binary_path: &str) -> GeneratedFile {
     GeneratedFile {
-        relative_path: PathBuf::from(SCRIPT_DIR).join("ここに解凍・圧縮.sh"),
+        relative_path: PathBuf::from(SCRIPT_DIR).join("ここに解凍・圧縮"),
         content: format!(
             "#!/bin/sh\n\
              set -u\n\
@@ -48,7 +48,7 @@ mod tests {
 
         assert_eq!(
             file.relative_path,
-            PathBuf::from(".local/share/nautilus/scripts/Easy Archive/ここに解凍・圧縮.sh")
+            PathBuf::from(".local/share/nautilus/scripts/Easy Archive/ここに解凍・圧縮")
         );
         assert!(file.executable);
         assert!(file.content.starts_with("#!/bin/sh\n"));
