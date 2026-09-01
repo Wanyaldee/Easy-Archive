@@ -18,6 +18,8 @@ Accepted（`packaging/build-deb.sh`でのローカルビルド・`dpkg-deb --inf
 
 CLAUDE.mdは「対応フォーマットは当面ZIPのみ、対象OSはUbuntu系（Zorin OS含む）のみ。他フォーマット・他OS対応をついでに広げない」とスコープを固定している。AppImageの主な利点は「distro非依存の単一実行ファイルとして動く」ことだが、対象OSがUbuntu系（dpkg/apt採用ディストリ）一本に絞られている以上、その利点はここでは効かない。一方`cargo-deb`は`crates/gui/Cargo.toml`の`[package.metadata.deb]`をそのまま読み、`cargo metadata`のtarget_directory経由でビルド成果物を自動的に解決する（実地検証は後述の3.）ため、Rustの既存ビルドパイプラインに`appimagetool`や自作`AppRun`スクリプトのような外部ツール・仕組みを追加する必要がない。CLAUDE.mdのYAGNI方針（新規依存を追加する前にスコープが本当に必要としているか確認する）に照らし、当面はUbuntu系一本化に対して`.deb`のみで十分と判断した。AppImageは`docs/spec.md`に「将来必要になれば別途検討」として明記し、選択肢として残す。
 
+**注記**: この決定は、ADR 0004（`winit`のソースコードを直接読んで原因を特定）やADR 0005（各ファイルマネージャーの公式リポジトリ・一次情報を確認）のような、AppImage自体を対象にした専用の実地調査を経たものではない。上記の理由づけは、CLAUDE.mdに既に書かれているスコープ方針（対象OSをUbuntu系のみに固定する）から導いた妥当な帰結であり、`appimagetool`でのビルド試行やAppImage形式そのものの技術的な検証は行っていない。将来AppImageが必要になった場合は、この帰結ベースの判断ではなく、ADR 0004/0005と同様の実地調査を伴う別ADRとして再検討すべきである。
+
 ### 2. ファイルマネージャー統合の自動設置は postinst ではなく GUI起動時のボタンにする
 
 `crates/gui/src/main.rs`の実装:
