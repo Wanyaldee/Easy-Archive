@@ -200,25 +200,69 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// `HOME`環境変数を書き換えるテスト同士を直列化するための排他ロック。
+    /// `std::env::set_var`/`var`はプロセス全体で共有される環境変数テーブルを
+    /// 操作するため、「他のテストが`HOME`という名前を読み書きしない」という
+    /// 条件だけでは競合を防げない — `cargo test`はデフォルトでテストを別
+    /// スレッドで並行実行するため、同時に走る別のテスト(またはその依存
+    /// コード内部)がどのキーであれ`set_var`/`var`を呼べば、同じグローバル
+    /// テーブルへのアクセスが競合しうる。これが`env::set_var`/`remove_var`
+    /// が`unsafe`である理由そのものであり、このMutexを保持している間だけ
+    /// `HOME`を差し替えることで実際に直列化を保証する。
+    static HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// テスト中だけ`HOME`を差し替え、`Drop`で必ず元の値に復元するRAIIガード。
+    /// `assert!`がガード構築と復元処理の間でパニックしても、スタック巻き戻し
+    /// 時に`Drop::drop`が呼ばれるため、破損した`HOME`のグローバル状態が
+    /// 後続のテストに漏れることはない。`HOME_ENV_LOCK`を保持したまま
+    /// 差し替え・復元の両方を行うため、他スレッドとの競合も起きない。
+    struct HomeEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        original: Option<String>,
+    }
+
+    impl HomeEnvGuard {
+        fn set(new_home: &std::path::Path) -> Self {
+            let lock = HOME_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let original = std::env::var("HOME").ok();
+            // SAFETY: `_lock`がプロセス内の`HOME`書き換えを直列化しているため、
+            // このスレッドの外から同時に`set_var`/`var`が呼ばれることはない。
+            unsafe {
+                std::env::set_var("HOME", new_home);
+            }
+            Self {
+                _lock: lock,
+                original,
+            }
+        }
+    }
+
+    impl Drop for HomeEnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: `_lock`を保持したまま復元するため、他スレッドとの競合は
+            // 起きない(パニックによる巻き戻し中でも`_lock`はまだ生きている)。
+            unsafe {
+                match &self.original {
+                    Some(value) => std::env::set_var("HOME", value),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
+    }
+
     /// `resolve_home_and_binary`は`$HOME`環境変数を直接読む(GUIプロセス自身
     /// の実行ユーザー権限で動くという設計上の理由。ヘルパーコメント参照)ため、
     /// パラメータ化できない。ここでは`install_all`/`is_installed`本体の
     /// ロジックはcrates/coreの単体テスト(Task 1)で網羅済みという前提のもと、
     /// `check_integration_installed`/`install_integration`が実際に環境変数
     /// 経由の`home`/`binary_path`をcore側へ正しく橋渡ししていることだけを
-    /// 確認する。テスト中は一時的に`HOME`を差し替え、終了後に元へ戻す。
-    /// 他のテストは`HOME`を参照しないため、プロセスグローバルな環境変数の
-    /// 書き換えによる競合は起きない。
+    /// 確認する。`HomeEnvGuard`が差し替え・復元・直列化のすべてを担う。
     #[test]
     fn integration_helpers_reflect_install_state_via_home_env() {
         let dir = temp_dir("integration-home");
-        let original_home = std::env::var("HOME").ok();
-
-        // SAFETY: このプロセス内で`HOME`を参照する他のテストは存在しない
-        // (`handle_drop_*`系は無関係)ため、並行実行下でも競合しない。
-        unsafe {
-            std::env::set_var("HOME", &dir);
-        }
+        let _guard = HomeEnvGuard::set(&dir);
 
         assert!(!check_integration_installed(), "設置前はfalseを返すべき");
 
@@ -229,14 +273,6 @@ mod tests {
             check_integration_installed(),
             "install_integration後はtrueを返すべき"
         );
-
-        // SAFETY: 上記set_varと対になる復元処理。他テストとの競合はない。
-        unsafe {
-            match &original_home {
-                Some(value) => std::env::set_var("HOME", value),
-                None => std::env::remove_var("HOME"),
-            }
-        }
 
         std::fs::remove_dir_all(&dir).ok();
     }
