@@ -13,6 +13,10 @@ path = "src/main.rs"
 
 [dependencies]
 encoding_rs = "0.8.35"
+# Thunarのuca.xml(ユーザーの既存カスタムアクションを含みうる設定ファイル)を
+# 安全に編集するため。文字列連結ではなく正規のXMLパーサで妥当な挿入位置を
+# 検出する(ADR 0005参照)。
+quick-xml = "0.42.0"
 # 対象は日本の学校・自治体から届く一般的なZIP(deflate/無圧縮)のみ。
 # bzip2/lzma/zstd/暗号化等はスコープ外なのでdeflateのみ有効化。
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
