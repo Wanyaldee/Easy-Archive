@@ -2,7 +2,7 @@
 
 ## ステータス
 
-Accepted（実装完了。WSL開発環境でNautilus統合の機能面を検証済み。Zorin OS等の実機での右クリックメニュー表示・操作の目視確認はまだ）
+Accepted（実装完了。WSL開発環境でNautilus統合を機能面・GUI目視操作の両方で検証済み。Nemo/Thunar/Dolphin/PCManFM-Qtは実機での確認がまだ）
 
 ## 背景
 
@@ -142,4 +142,13 @@ WSL開発環境には`nautilus`本体のみインストールされていた(Nem
 - `install-integration`を2回実行しても`uca.xml`の`<unique-id>`が重複しない(冪等性)ことを実HOME環境でも再確認した
 - 発見した不具合: `notify-send`(libnotify-bin)が入っていない環境では、生成したスクリプトが`command not found`で異常終了コード(127)を返していた。`command -v notify-send`で存在確認してから呼ぶよう修正した。`easy-archive auto`自体の処理結果には影響しない(通知が出ないだけで、圧縮/解凍は既に完了している)
 
-Nautilusの「スクリプト」サブメニューが実際に右クリックメニュー上に表示され、GUI上でクリックして動作するかの目視確認は、WSLg経由でのGUI操作が必要なため未実施。Nemo/Thunar/Dolphin/PCManFM-Qtは本開発環境に存在しないため、実機(Zorin OS Core/Lite、Kubuntu、Lubuntu等)での確認が別途必要。
+続けてWSLg経由でNautilusのGUIを実際に操作し、以下を目視確認済み。
+
+1. Nautilus起動
+2. ディレクトリを右クリック
+3. 「Easy Archive」サブメニューをクリック
+4. スクリプト(`ここに解凍・圧縮.sh`)をクリックして圧縮/解凍が実行される
+
+メニュー項目の日本語表示に文字化けが見られたが、これはこの開発環境(WSL)の日本語ロケール/フォント設定が不十分なことに起因するNautilus自体の表示問題であり、`easy-archive`側のコードや生成しているスクリプト内容には起因しない(スクリプトの実行自体は正常に完了している)。対象OS(Zorin OS等、日本語環境が前提の学校・自治体PC)では発生しない見込み。
+
+Nemo/Thunar/Dolphin/PCManFM-Qtは本開発環境に存在しないため、実機(Zorin OS Lite、Kubuntu、Lubuntu、Linux Mint等)での確認が別途必要。
