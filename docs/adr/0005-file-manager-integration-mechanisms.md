@@ -2,7 +2,7 @@
 
 ## ステータス
 
-Accepted（実装完了。実機での右クリックメニュー動作確認は未実施、確認後に本ADRへ追記する）
+Accepted（実装完了。WSL開発環境でNautilus統合の機能面を検証済み。Zorin OS等の実機での右クリックメニュー表示・操作の目視確認はまだ）
 
 ## 背景
 
@@ -132,4 +132,14 @@ Thunarの`uca.xml`は既存のユーザー設定（他の自作カスタムア�
 - CLIに`easy-archive install-integration [--dry-run]`/`uninstall-integration`を追加した。バイナリパスは`env::current_exe()`から解決する。環境検出はせず対応する全ファイルマネージャー分を無条件に配置する
 - PCManFM（GTK/classic）は対象から除外し、`docs/spec.md`のマイルストーン4に「将来対応」として明記した
 - 使い捨てのフェイクHOMEに対するinstall→再install(冪等性)→uninstallの手動検証、および既存のThunarカスタムアクションが保持されることを確認済み
-- 各DEでの実際の右クリックメニュー表示・動作確認は自動テストでは担保できないため未実施。ADR 0004の前例に倣い、実機（Zorin OS Core/Lite等、可能な範囲）での確認結果を別途本ADRに追記する
+- 各DEでの実際の右クリックメニュー表示・動作確認は自動テストでは担保できないため、Zorin OS等の実機での目視確認はまだ。ADR 0004の前例に倣い、確認結果を別途本ADRに追記する
+
+## 検証結果(WSL開発環境)
+
+WSL開発環境には`nautilus`本体のみインストールされていた(Nemo/Thunar/Dolphin/PCManFM-Qtは未インストール)。実際の`$HOME`に`easy-archive install-integration`を実行し、以下を確認した。
+
+- Nautilusの`NAUTILUS_SCRIPT_SELECTED_FILE_PATHS`環境変数を実際の値で再現してインストール済みスクリプトを直接起動し、圧縮(`データ.txt`→`データ.zip`、日本語ファイル名を含む)・解凍(`サンプル.zip`→`サンプル/サンプル.txt`)の両方が正しく動作することを確認した
+- `install-integration`を2回実行しても`uca.xml`の`<unique-id>`が重複しない(冪等性)ことを実HOME環境でも再確認した
+- 発見した不具合: `notify-send`(libnotify-bin)が入っていない環境では、生成したスクリプトが`command not found`で異常終了コード(127)を返していた。`command -v notify-send`で存在確認してから呼ぶよう修正した。`easy-archive auto`自体の処理結果には影響しない(通知が出ないだけで、圧縮/解凍は既に完了している)
+
+Nautilusの「スクリプト」サブメニューが実際に右クリックメニュー上に表示され、GUI上でクリックして動作するかの目視確認は、WSLg経由でのGUI操作が必要なため未実施。Nemo/Thunar/Dolphin/PCManFM-Qtは本開発環境に存在しないため、実機(Zorin OS Core/Lite、Kubuntu、Lubuntu等)での確認が別途必要。
