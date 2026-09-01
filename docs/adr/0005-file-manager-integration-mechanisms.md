@@ -2,7 +2,7 @@
 
 ## ステータス
 
-Accepted（調査・設計段階。実装はこのADRの決定に基づいて進める）
+Accepted（実装完了。実機での右クリックメニュー動作確認は未実施、確認後に本ADRへ追記する）
 
 ## 背景
 
@@ -127,6 +127,9 @@ Thunarの`uca.xml`は既存のユーザー設定（他の自作カスタムア�
 
 ## 影響
 
-- `crates/core`に新モジュール（例: `src/auto.rs`と`src/integration/`）が追加される。GUI側のロジック重複が解消される
-- PCManFM（GTK/classic）は対象から除外し、`docs/spec.md`のマイルストーン4に「将来対応」として明記する
-- 各DEの実際の動作確認は自動テストでは担保できないため、ADR 0004の前例に倣い実機（Zorin OS Core/Lite等、可能な範囲）での確認結果を別途記録する
+- `crates/core`に新モジュール（`src/auto.rs`と`src/integration/`）を追加した。GUI側(`crates/gui/src/main.rs`)は`easy_archive_core::auto::auto`への委譲に置き換え、ロジック重複を解消した
+- `crates/core`に`quick-xml`を新規依存として追加した（Thunarのuca.xml安全マージのため）
+- CLIに`easy-archive install-integration [--dry-run]`/`uninstall-integration`を追加した。バイナリパスは`env::current_exe()`から解決する。環境検出はせず対応する全ファイルマネージャー分を無条件に配置する
+- PCManFM（GTK/classic）は対象から除外し、`docs/spec.md`のマイルストーン4に「将来対応」として明記した
+- 使い捨てのフェイクHOMEに対するinstall→再install(冪等性)→uninstallの手動検証、および既存のThunarカスタムアクションが保持されることを確認済み
+- 各DEでの実際の右クリックメニュー表示・動作確認は自動テストでは担保できないため未実施。ADR 0004の前例に倣い、実機（Zorin OS Core/Lite等、可能な範囲）での確認結果を別途本ADRに追記する

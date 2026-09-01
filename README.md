@@ -20,7 +20,7 @@ Linux向けGUIアーカイバ（PeaZip, Xarchiver, Arkなど）は文字コー�
 
 ## ステータス
 
-マイルストーン1〜3完了。文字コード自動判定付きのCLI（`list`/`compress`/`extract`）と、ドラッグ&ドロップで解凍・圧縮できるGUIを実装済み。詳細・今後のマイルストーンは [`docs/spec.md`](./docs/spec.md) を参照。
+マイルストーン1〜3完了。マイルストーン4（主要ファイルマネージャーの右クリックメニュー統合）は実装完了、実機検証待ち。文字コード自動判定付きのCLI（`list`/`compress`/`extract`/`auto`）と、ドラッグ&ドロップで解凍・圧縮できるGUI、主要ファイルマネージャーへの右クリックメニュー連携を実装済み。詳細・今後のマイルストーンは [`docs/spec.md`](./docs/spec.md) を参照。
 
 ### ビルド・実行
 
@@ -32,11 +32,26 @@ sudo apt install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfi
 ```
 
 ```sh
-# CLI（listの例。compress/extractサブコマンドもあり）
+# CLI（listの例。compress/extract/autoサブコマンドもあり）
 cargo run -p easy-archive-core --bin easy-archive -- list <ZIPパス>
 
 # GUI
 cargo run -p easy-archive-gui
+```
+
+### ファイルマネージャーへの右クリックメニュー統合
+
+Nautilus(GNOME)・Nemo(Cinnamon)・Thunar(XFCE)・Dolphin(KDE)・PCManFM-Qt(LXQt)に「ここに解凍」「ここを圧縮」の右クリックメニューを追加できる。対応方式の技術的決定は[ADR 0005](./docs/adr/0005-file-manager-integration-mechanisms.md)を参照。
+
+```sh
+# 設置される内容を確認してから実行したい場合
+easy-archive install-integration --dry-run
+
+# 実際に設置する(対応する全ファイルマネージャー分を一括で設置)
+easy-archive install-integration
+
+# 取り除く(Thunarの他のカスタムアクションは保持される)
+easy-archive uninstall-integration
 ```
 
 Rustツールチェーンが未導入なら[rustup](https://rustup.rs/)（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`）でインストールする。
