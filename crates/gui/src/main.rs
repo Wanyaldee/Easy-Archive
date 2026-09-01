@@ -1,6 +1,8 @@
+use std::env;
 use std::path::PathBuf;
 
 use easy_archive_core::auto;
+use easy_archive_core::integration;
 use winit::platform::x11::EventLoopBuilderExtX11;
 
 fn main() -> eframe::Result<()> {
@@ -43,9 +45,56 @@ fn setup_japanese_font(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-#[derive(Default)]
+/// `install-integration`同様、`$HOME`と自実行ファイルのパスを解決する。
+/// GUIプロセス自身の実行ユーザー権限で動くため、CLIの`install-integration`
+/// と異なりpostinst(root権限)経由では不可能だった統合設置をここで安全に
+/// 行える。
+fn resolve_home_and_binary() -> Result<(PathBuf, String), String> {
+    let home = env::var("HOME")
+        .map(PathBuf::from)
+        .map_err(|_| "HOME環境変数が設定されていません".to_string())?;
+    let binary_path = env::current_exe()
+        .map_err(|e| format!("実行ファイルのパスを取得できませんでした: {e}"))?
+        .to_string_lossy()
+        .into_owned();
+    Ok((home, binary_path))
+}
+
+/// 統合ファイルが未設置ならバナーを表示するための判定。解決できない場合
+/// (通常の環境では起こらない)はバナーを表示しない側に倒す。
+fn check_integration_installed() -> bool {
+    match resolve_home_and_binary() {
+        Ok((home, binary_path)) => integration::is_installed(&home, &binary_path).unwrap_or(true),
+        Err(_) => true,
+    }
+}
+
+/// 設置ボタンの押下時に呼ぶ。結果メッセージを返す。
+fn install_integration() -> String {
+    match resolve_home_and_binary() {
+        Ok((home, binary_path)) => match integration::install_all(&home, &binary_path) {
+            Ok(written) => format!(
+                "ファイルマネージャー統合を設置しました({}件)",
+                written.len()
+            ),
+            Err(e) => format!("エラー: {e}"),
+        },
+        Err(e) => format!("エラー: {e}"),
+    }
+}
+
 struct App {
     status: String,
+    integration_installed: bool,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            status: String::new(),
+            integration_installed: check_integration_installed(),
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -60,6 +109,20 @@ impl eframe::App for App {
 
         if !dropped.is_empty() {
             self.status = handle_drop(&dropped);
+        }
+
+        if !self.integration_installed {
+            egui::Panel::top("integration_banner").show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        "ファイルマネージャーの右クリックメニューにEasy Archiveを追加できます。",
+                    );
+                    if ui.button("設置する").clicked() {
+                        self.status = install_integration();
+                        self.integration_installed = check_integration_installed();
+                    }
+                });
+            });
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
@@ -137,4 +200,44 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// `resolve_home_and_binary`は`$HOME`環境変数を直接読む(GUIプロセス自身
+    /// の実行ユーザー権限で動くという設計上の理由。ヘルパーコメント参照)ため、
+    /// パラメータ化できない。ここでは`install_all`/`is_installed`本体の
+    /// ロジックはcrates/coreの単体テスト(Task 1)で網羅済みという前提のもと、
+    /// `check_integration_installed`/`install_integration`が実際に環境変数
+    /// 経由の`home`/`binary_path`をcore側へ正しく橋渡ししていることだけを
+    /// 確認する。テスト中は一時的に`HOME`を差し替え、終了後に元へ戻す。
+    /// 他のテストは`HOME`を参照しないため、プロセスグローバルな環境変数の
+    /// 書き換えによる競合は起きない。
+    #[test]
+    fn integration_helpers_reflect_install_state_via_home_env() {
+        let dir = temp_dir("integration-home");
+        let original_home = std::env::var("HOME").ok();
+
+        // SAFETY: このプロセス内で`HOME`を参照する他のテストは存在しない
+        // (`handle_drop_*`系は無関係)ため、並行実行下でも競合しない。
+        unsafe {
+            std::env::set_var("HOME", &dir);
+        }
+
+        assert!(!check_integration_installed(), "設置前はfalseを返すべき");
+
+        let msg = install_integration();
+        assert!(msg.contains("設置しました"), "unexpected message: {msg}");
+
+        assert!(
+            check_integration_installed(),
+            "install_integration後はtrueを返すべき"
+        );
+
+        // SAFETY: 上記set_varと対になる復元処理。他テストとの競合はない。
+        unsafe {
+            match &original_home {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
