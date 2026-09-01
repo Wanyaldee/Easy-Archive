@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use easy_archive_core::{compress, extract};
+use easy_archive_core::auto;
 use winit::platform::x11::EventLoopBuilderExtX11;
 
 fn main() -> eframe::Result<()> {
@@ -77,70 +77,15 @@ impl eframe::App for App {
 
 /// ドロップされたパスの一覧を受け取り、解凍/圧縮のどちらかを実行して
 /// 結果メッセージを返す。2件以上ドロップされた場合は何もせずエラーの
-/// メッセージだけを返す。
+/// メッセージだけを返す。実際の判定・実行は`easy_archive_core::auto`に
+/// 委譲する(ファイルマネージャー右クリックメニュー統合と共通のロジック)。
 fn handle_drop(paths: &[PathBuf]) -> String {
     if paths.len() != 1 {
         return "一度に1つだけドロップしてください".to_string();
     }
-    let path = &paths[0];
 
-    let is_zip_file = path.is_file()
-        && path
-            .extension()
-            .map(|e| e.eq_ignore_ascii_case("zip"))
-            .unwrap_or(false);
-
-    if is_zip_file {
-        do_extract(path)
-    } else if path.is_dir() || path.is_file() {
-        do_compress(path)
-    } else {
-        format!("入力パスが見つかりません: {}", path.display())
-    }
-}
-
-fn do_extract(zip_path: &Path) -> String {
-    let (Some(parent), Some(stem)) = (zip_path.parent(), zip_path.file_stem().and_then(|s| s.to_str())) else {
-        return format!("パスを解析できませんでした: {}", zip_path.display());
-    };
-    let dest_dir = parent.join(stem);
-
-    match extract::extract(zip_path, &dest_dir) {
-        Ok(count) => format!("{} に展開しました(エントリ数: {count})", dest_dir.display()),
-        Err(e) => format!("エラー: {e}"),
-    }
-}
-
-fn do_compress(source: &Path) -> String {
-    // ディレクトリには「拡張子」の概念がないため、file_stem()で`.`以降を
-    // 切り落とすとファイル名が壊れる(例: "R7.4 名簿" → "R7")。
-    // ディレクトリはfile_name()、ファイルはfile_stem()を使う。
-    let name = if source.is_dir() {
-        source.file_name().and_then(|s| s.to_str())
-    } else {
-        source.file_stem().and_then(|s| s.to_str())
-    };
-    let (Some(parent), Some(name)) = (source.parent(), name) else {
-        return format!("パスを解析できませんでした: {}", source.display());
-    };
-    let output_path = parent.join(format!("{name}.zip"));
-
-    if output_path.exists() {
-        return format!("既に存在します: {}", output_path.display());
-    }
-
-    let file = match std::fs::File::create(&output_path) {
-        Ok(f) => f,
-        Err(e) => {
-            return format!(
-                "出力ファイルを作成できませんでした: {}: {e}",
-                output_path.display()
-            )
-        }
-    };
-
-    match compress::compress(file, &[source.to_path_buf()]) {
-        Ok((_, count)) => format!("{} を作成しました(エントリ数: {count})", output_path.display()),
+    match auto::auto(&paths[0]) {
+        Ok(message) => message,
         Err(e) => format!("エラー: {e}"),
     }
 }
@@ -158,82 +103,18 @@ mod tests {
         dir
     }
 
+    /// 解凍/圧縮の判定・命名規則・エラーケースは`easy_archive_core::auto`側の
+    /// テスト(`crates/core/src/auto.rs`)で網羅済み。ここでは単一パスの結果を
+    /// そのまま返す配線が壊れていないことだけをスモークテストで確認する。
     #[test]
-    fn handle_drop_compresses_single_file() {
-        let dir = temp_dir("file");
+    fn handle_drop_delegates_single_path_to_core_auto() {
+        let dir = temp_dir("smoke");
         let file_path = dir.join("hello.txt");
         std::fs::write(&file_path, b"hello world").unwrap();
 
-        let msg = handle_drop(&[file_path.clone()]);
+        let msg = handle_drop(&[file_path]);
         assert!(msg.contains("作成しました"), "unexpected message: {msg}");
-
-        let expected_zip = dir.join("hello.zip");
-        assert!(expected_zip.exists());
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn handle_drop_compresses_single_directory() {
-        let dir = temp_dir("dir");
-        let source = dir.join("reports");
-        std::fs::create_dir_all(&source).unwrap();
-        std::fs::write(source.join("a.txt"), b"a").unwrap();
-
-        let msg = handle_drop(&[source.clone()]);
-        // core::compress自体はcompress.rsのテストで内容の正しさを検証済み
-        // なので、ここではGUI層の判定・呼び出し結果(出力先とエントリ数の
-        // 報告)だけを確認する。
-        assert!(msg.contains("作成しました"), "unexpected message: {msg}");
-        assert!(msg.contains("エントリ数: 1"), "unexpected message: {msg}");
-
-        let expected_zip = dir.join("reports.zip");
-        assert!(expected_zip.exists());
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn handle_drop_compresses_directory_with_dot_in_name() {
-        let dir = temp_dir("dotdir");
-        // "R7.4"のような、年度表記等で"."を含む自治体・学校の実在フォルダ名を想定。
-        let source = dir.join("R7.4");
-        std::fs::create_dir_all(&source).unwrap();
-        std::fs::write(source.join("a.txt"), b"a").unwrap();
-
-        let msg = handle_drop(&[source.clone()]);
-        assert!(msg.contains("作成しました"), "unexpected message: {msg}");
-
-        // file_stem()だと"R7.zip"になってしまうバグの回帰テスト。
-        let expected_zip = dir.join("R7.4.zip");
-        assert!(expected_zip.exists(), "expected {} to exist", expected_zip.display());
-        assert!(!dir.join("R7.zip").exists());
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn handle_drop_extracts_single_zip_file() {
-        let dir = temp_dir("zip");
-        let source = dir.join("src_dir");
-        std::fs::create_dir_all(&source).unwrap();
-        std::fs::write(source.join("a.txt"), b"a").unwrap();
-
-        let zip_path = dir.join("src_dir.zip");
-        let file = std::fs::File::create(&zip_path).unwrap();
-        compress::compress(file, &[source.clone()]).unwrap();
-
-        // 展開先に既存フォルダとの衝突が起きないよう、圧縮元は消しておく。
-        std::fs::remove_dir_all(&source).unwrap();
-
-        let msg = handle_drop(&[zip_path.clone()]);
-        assert!(msg.contains("展開しました"), "unexpected message: {msg}");
-
-        let dest = dir.join("src_dir");
-        assert!(dest.is_dir());
-        // compress()はディレクトリのbasenameをプレフィックスに使うため、
-        // ZIP内のエントリ名は"src_dir/a.txt"になる。
-        assert!(dest.join("src_dir").join("a.txt").exists());
+        assert!(dir.join("hello.zip").exists());
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -256,43 +137,4 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    #[test]
-    fn handle_drop_compress_fails_when_output_already_exists() {
-        let dir = temp_dir("compress-exists");
-        let file_path = dir.join("hello.txt");
-        std::fs::write(&file_path, b"hello world").unwrap();
-
-        let existing_zip = dir.join("hello.zip");
-        std::fs::write(&existing_zip, b"not a real zip, should not be overwritten").unwrap();
-
-        let msg = handle_drop(&[file_path]);
-        assert!(msg.contains("既に存在します"), "unexpected message: {msg}");
-
-        // 上書きされていないことを確認する。
-        let content = std::fs::read(&existing_zip).unwrap();
-        assert_eq!(content, b"not a real zip, should not be overwritten");
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn handle_drop_extract_fails_when_dest_already_exists() {
-        let dir = temp_dir("extract-exists");
-        let source = dir.join("src_dir");
-        std::fs::create_dir_all(&source).unwrap();
-        std::fs::write(source.join("a.txt"), b"a").unwrap();
-
-        let zip_path = dir.join("src_dir.zip");
-        let file = std::fs::File::create(&zip_path).unwrap();
-        compress::compress(file, &[source.clone()]).unwrap();
-
-        // 圧縮元ディレクトリがそのまま展開先(src_dir)と衝突する状態にする。
-        let msg = handle_drop(&[zip_path]);
-        assert!(msg.contains("既に存在します"), "unexpected message: {msg}");
-
-        // 元のディレクトリの中身がそのまま残っている(上書きされていない)ことを確認する。
-        assert!(source.join("a.txt").exists());
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
 }
