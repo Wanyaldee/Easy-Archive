@@ -2,7 +2,7 @@
 
 ## ステータス
 
-Accepted（`packaging/build-deb.sh`でのローカルビルド・`dpkg-deb --info`/`--contents`による内容検証までは完了。実機（Zorin OS等）での`.deb`インストール・GUI起動・統合設置ボタンの動作は、ADR 0004/0005と同様に実機検証待ち）
+Accepted（`packaging/build-deb.sh`でのローカルビルド・`dpkg-deb --info`/`--contents`による内容検証に加え、実機（Zorin OS Core、VirtualBox仮想環境）での`.deb`インストール→GUI起動→「設置する」ボタン→ファイルマネージャー右クリックメニュー経由の解凍・圧縮まで一連の動作を確認済み。検証結果は「実機検証結果」参照）
 
 ## 背景
 
@@ -93,10 +93,20 @@ depends = "$auto, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libxkbcom
 
 ## 既知の限界
 
-- **実機未検証**: `.deb`をZorin OS等の実機でダブルクリックインストール→GUI起動→初回バナー表示→「設置する」ボタン→実際のファイルマネージャー右クリックメニューへの反映、という一連の流れはまだ確認していない。ADR 0004/0005と同様、実機検証待ちとして扱う。GUI側のバナー/ボタン配線自体は、`$HOME`環境変数を差し替えたユニットテスト（`integration_helpers_reflect_install_state_via_home_env`、`crates/gui/src/main.rs`）で「設置前はis_installed=false・ボタン押下でinstall_all実行・設置後はtrue」という状態遷移のみ検証済みで、実際のレンダリング結果（バナーの見た目、日本語表示の崩れの有無）は未確認。
+- **実機検証済み（Nautilus/Zorin OS Coreのみ）**: `.deb`をZorin OS Core（VirtualBox仮想環境）でインストール→GUI起動→初回バナー表示→「設置する」ボタン→実際のNautilus右クリックメニューへの反映、という一連の流れを確認した（詳細は「実機検証結果」参照）。ただしZorin OS CoreはNautilusのみのため、Nemo/Thunar/Dolphin/PCManFM-Qtでの同様の実機確認はADR 0005の記載通りまだ残っている。
 - **AppImageは対象外**（決定1参照）。`docs/spec.md`に将来の再検討候補として明記してある。
 - **`depends = "$auto"`はdlopenベースの実行時依存を検出できない**: これは`dpkg-shlibdeps`の仕組み上の限界であり、`cargo-deb`側で自動的に回避する手段はない。決定4の通り、7つのX11系ライブラリを`Depends`へ手動で補完することで対処した。補完リストはコード（`x11-dl`がdlopenするライブラリ名）と手動で対応づけているだけなので、winit/x11-dlのメジャーバージョンを上げた際にはこのリストが実態とずれていないか確認が必要である。
 - **`.desktop`のzipファイル関連付けは対象外**: 当初`packaging/easy-archive.desktop`には`MimeType=application/zip;`と`Exec=easy-archive-gui %U`を書いていたが、GUI本体（`crates/gui/src/main.rs`）はマイルストーン3以来ドラッグ&ドロップ専用の設計で`env::args()`を一切読まない。この状態でzipのデフォルトハンドラになると、zipをダブルクリックしても空のウィンドウが開くだけで、`Terminal=false`のためエラーも出ない。GUIにargv処理を足すのは新規の仕様追加になるため、本マイルストーンでは「できないことを`.desktop`に書かない」方向で解決し、`MimeType`行を削除、`Exec`も`%U`なしのランチャー（`Exec=easy-archive-gui`）に戻した。zipのダブルクリック起動対応は将来の課題として残す（対応するならGUI側のargv受け取り＋その単体テストとセットで行うこと）。
+
+## 実機検証結果（Zorin OS Core、VirtualBox仮想環境）
+
+ユーザーがZorin OS Core（VirtualBox仮想マシン）上で以下を確認した（2026-09-07）。
+
+- `packaging/build-deb.sh`で生成した`.deb`のインストールに成功した
+- GUI起動、初回バナー表示、「設置する」ボタンによるファイルマネージャー統合の設置が正常に動作した
+- Nautilusの右クリックメニュー（「Easy Archive」サブメニュー）経由での解凍・圧縮が正常に動作した
+
+これにより「既知の限界」に記載していた実機未検証の状態は、Zorin OS Core・Nautilusの組み合わせについては解消した。Zorin OS CoreはNautilusのみを標準搭載するため、Nemo/Thunar/Dolphin/PCManFM-Qtでの実機確認は引き続き必要（ADR 0005参照）。
 
 ## 影響
 
