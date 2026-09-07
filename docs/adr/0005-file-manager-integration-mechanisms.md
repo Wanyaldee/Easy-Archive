@@ -2,7 +2,7 @@
 
 ## ステータス
 
-Accepted（実装完了。WSL開発環境でNautilus統合を機能面・GUI目視操作の両方で検証済み。Nemo/Thunar/Dolphin/PCManFM-Qtは実機での確認がまだ）
+Accepted（実装完了。WSL開発環境でNautilus統合を機能面・GUI目視操作の両方で検証済み。さらに実機（Zorin OS Core、VirtualBox仮想環境）でもNautilus経由の右クリックメニュー統合（解凍・圧縮）を確認済み。Nemo/Thunar/Dolphin/PCManFM-Qtは実機での確認がまだ）
 
 ## 背景
 
@@ -164,4 +164,13 @@ Nemo/Thunar/Dolphin/PCManFM-Qtは本開発環境に存在しないため、実�
 - `cargo test`: `crates/core/src/integration/nautilus.rs`内のユニットテスト2件を拡張子なしファイル名の期待値に更新し、パスすることを確認
 - 偽HOME・実HOMEの両方で`easy-archive install-integration`を実行し、`.local/share/nautilus/scripts/Easy Archive/ここに解凍・圧縮`(拡張子なし、実行権限`rwxr-xr-x`)が生成されることを確認
 - `easy-archive uninstall-integration`は`Easy Archive`サブディレクトリごと削除する実装のため、ファイル名(拡張子)を変更しても既存のアンインストール処理に影響しないことを確認(実際に旧`.sh`版が残った状態から`uninstall-integration`→`install-integration`でクリーンに入れ替わることを確認)
-- **未実施**: Nautilus GUIを実際に起動しての右クリックメニュー目視確認(前回の検証で行った手順)は、この開発環境にGUI自動化・スクリーンショットツール(xdotool/scrot/gnome-screenshot等)が入っておらず実施できなかった。仕組み上拡張子はメニュー表示のラベル文字列にしかならないため機能的リスクは低いと判断するが、実際の表示崩れ等がないかは対象OS(Zorin OS等)の実機、またはツールが揃った環境での目視確認が別途望ましい。
+- **未実施（この開発環境では）**: Nautilus GUIを実際に起動しての右クリックメニュー目視確認(前回の検証で行った手順)は、この開発環境にGUI自動化・スクリーンショットツール(xdotool/scrot/gnome-screenshot等)が入っておらず実施できなかった。仕組み上拡張子はメニュー表示のラベル文字列にしかならないため機能的リスクは低いと判断するが、実際の表示崩れ等がないかは対象OS(Zorin OS等)の実機、またはツールが揃った環境での目視確認が別途望ましい。→ 下記「実機検証結果(Zorin OS Core)」で解消済み。
+
+## 実機検証結果(Zorin OS Core、VirtualBox仮想環境)
+
+ユーザーがZorin OS Core（VirtualBox仮想マシン）上で、`.deb`パッケージ経由でインストールしたEasy Archiveについて以下を確認した（2026-09-07）。
+
+- GUI起動時の初回バナーから「設置する」ボタンを押し、ファイルマネージャー統合を設置した
+- Nautilusの右クリックメニュー（「Easy Archive」サブメニュー→スクリプトクリック）経由で、解凍・圧縮が正常に動作した
+
+これによりNautilusについては、WSL開発環境での確認に加え、対象OS実機での右クリックメニュー動作も確認済みとなった。Nemo/Thunar/Dolphin/PCManFM-Qtは引き続き実機(Zorin OS Lite、Kubuntu、Lubuntu、Linux Mint等)での確認が必要。`.deb`パッケージ自体のビルド・インストール・GUI起動確認の詳細は[ADR 0007](./0007-deb-packaging.md)の「実機検証結果」を参照。
