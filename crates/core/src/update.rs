@@ -5,6 +5,7 @@
 //! テスト対象外(実機検証で担保。設計書「テスト方針」参照)。
 
 use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -100,8 +101,19 @@ fn extract_checksum_for(checksum_text: &str, deb_url: &str) -> Result<String, St
         .ok_or_else(|| "チェックサムファイルに該当するエントリが見つかりません".to_string())
 }
 
+/// GitHub APIへの問い合わせ・`.deb`/チェックサムファイルのダウンロードで
+/// 共有するHTTPエージェント。スタックしたコネクション(キャプティブポータル・
+/// 応答のないピア等)で無期限にハングしないよう、リクエスト全体(DNS解決・
+/// 接続・リダイレクト・応答読み取りを含む)に約60秒の上限を設ける。
+fn http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+}
+
 fn fetch_latest_release_json() -> Result<String, String> {
-    ureq::get("https://api.github.com/repos/Wanyaldee/Easy-Archive/releases/latest")
+    http_agent()
+        .get("https://api.github.com/repos/Wanyaldee/Easy-Archive/releases/latest")
         .set("User-Agent", "easy-archive-update-checker")
         .set("Accept", "application/vnd.github+json")
         .call()
@@ -124,7 +136,8 @@ pub fn check_latest(current_version: &str) -> Option<UpdateInfo> {
 
 fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
-    ureq::get(url)
+    http_agent()
+        .get(url)
         .set("User-Agent", "easy-archive-update-checker")
         .call()
         .map_err(|e| format!("ダウンロードに失敗しました: {e}"))?
@@ -148,9 +161,25 @@ pub fn download_and_install(info: &UpdateInfo) -> Result<(), String> {
         return Err("ダウンロードしたファイルの検証に失敗しました".to_string());
     }
 
-    let deb_path = std::env::temp_dir().join("easy-archive-update.deb");
-    std::fs::write(&deb_path, &deb_bytes)
-        .map_err(|e| format!("ファイルの書き込みに失敗しました: {e}"))?;
+    // 固定の予測可能なパス(旧: std::env::temp_dir().join("easy-archive-update.deb"))
+    // は共有/tmp上でのTOCTOUのリスクがある。他のローカルユーザーが同名の
+    // ファイル/ディレクトリを先回りして作成し、我々の書き込み先を乗っ取ったり
+    // 後から中身を差し替えたりできる窓が生まれ、それをpkexec(root権限)で
+    // インストールしてしまう。プロセスIDを含む名前(`create_dir`は既存パスに
+    // 対してエラーになるため、他者の先回りがあれば検知できる)と0o700権限で
+    // この窓を閉じる。
+    let work_dir = std::env::temp_dir().join(format!("easy-archive-update-{}", std::process::id()));
+    std::fs::create_dir(&work_dir)
+        .map_err(|e| format!("一時ディレクトリの作成に失敗しました: {e}"))?;
+    if let Err(e) = std::fs::set_permissions(&work_dir, std::fs::Permissions::from_mode(0o700)) {
+        let _ = std::fs::remove_dir_all(&work_dir);
+        return Err(format!("一時ディレクトリの権限設定に失敗しました: {e}"));
+    }
+    let deb_path = work_dir.join("easy-archive-update.deb");
+    if let Err(e) = std::fs::write(&deb_path, &deb_bytes) {
+        let _ = std::fs::remove_dir_all(&work_dir);
+        return Err(format!("ファイルの書き込みに失敗しました: {e}"));
+    }
 
     let status = std::process::Command::new("pkexec")
         .arg("apt-get")
@@ -159,7 +188,7 @@ pub fn download_and_install(info: &UpdateInfo) -> Result<(), String> {
         .arg(&deb_path)
         .status()
         .map_err(|e| format!("インストールコマンドの起動に失敗しました: {e}"));
-    let _ = std::fs::remove_file(&deb_path);
+    let _ = std::fs::remove_dir_all(&work_dir);
     let status = status?;
 
     if status.success() {
@@ -170,7 +199,10 @@ pub fn download_and_install(info: &UpdateInfo) -> Result<(), String> {
             // 得られなかった場合127を返す(man pkexecのRETURN VALUEで確認済み)。
             Some(126) => Err("認証がキャンセルされました".to_string()),
             Some(127) => Err("認証に失敗しました".to_string()),
-            _ => Err("インストールに失敗しました".to_string()),
+            other => {
+                eprintln!("pkexec apt-get install failed with exit code: {other:?}");
+                Err("インストールに失敗しました".to_string())
+            }
         }
     }
 }

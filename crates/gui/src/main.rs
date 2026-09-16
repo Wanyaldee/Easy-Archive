@@ -20,11 +20,16 @@ enum UpdateState {
 /// 起動時にバックグラウンドスレッドでGitHub Releaseの新バージョンを確認
 /// する。ネットワーク待ちでUIスレッドをブロックしないよう、結果は
 /// `mpsc::channel`経由でUIスレッドが毎フレーム`try_recv`で受け取る。
-fn spawn_update_check() -> mpsc::Receiver<Option<UpdateInfo>> {
+fn spawn_update_check(ctx: egui::Context) -> mpsc::Receiver<Option<UpdateInfo>> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let result = update::check_latest(env!("CARGO_PKG_VERSION"));
         let _ = tx.send(result);
+        // eframeは既定でreactiveモード(入力イベント時のみ再描画)のため、
+        // バックグラウンドスレッドが結果を送るだけではUIスレッドが起こされず、
+        // マウス操作等で偶然次のフレームが来るまでバナーが表示されない
+        // (フリーズしたように見える)。明示的に再描画を要求する。
+        ctx.request_repaint();
     });
     rx
 }
@@ -32,11 +37,16 @@ fn spawn_update_check() -> mpsc::Receiver<Option<UpdateInfo>> {
 /// 「アップデートする」ボタン押下時に呼ぶ。ダウンロード・チェックサム
 /// 検証・`pkexec`実行(認証ダイアログ待ちを含む)はすべて時間がかかるため、
 /// 別スレッドで行い、結果をチャネル経由でUIスレッドに返す。
-fn spawn_update_install(info: UpdateInfo) -> mpsc::Receiver<Result<(), String>> {
+fn spawn_update_install(
+    ctx: egui::Context,
+    info: UpdateInfo,
+) -> mpsc::Receiver<Result<(), String>> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let result = update::download_and_install(&info);
         let _ = tx.send(result);
+        // spawn_update_check同様、reactiveモードでUIを起こすために必要。
+        ctx.request_repaint();
     });
     rx
 }
@@ -45,8 +55,11 @@ fn spawn_update_install(info: UpdateInfo) -> mpsc::Receiver<Result<(), String>> 
 /// `env::current_exe()`(`/proc/self/exe`)が置き換え前の(削除済み)inodeを
 /// 指したままになりうる(ADR 0007の`resolve_cli_binary_path`と同種の理由)
 /// ため使わず、`.deb`のインストール先として固定の既知パスを直接起動する。
-fn restart_application() {
-    let _ = std::process::Command::new("/usr/bin/easy-archive-gui").spawn();
+/// 起動に失敗した場合は黙って終了せず、手動再起動を促すメッセージを返す。
+fn restart_application() -> Result<(), String> {
+    std::process::Command::new("/usr/bin/easy-archive-gui")
+        .spawn()
+        .map_err(|e| format!("再起動に失敗しました: {e}。アプリを手動で再起動してください。"))?;
     std::process::exit(0);
 }
 
@@ -64,7 +77,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             setup_japanese_font(&cc.egui_ctx);
-            Ok(Box::new(App::default()))
+            Ok(Box::new(App::new(cc.egui_ctx.clone())))
         }),
     )
 }
@@ -153,13 +166,13 @@ struct App {
     update_install_rx: Option<mpsc::Receiver<Result<(), String>>>,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    fn new(ctx: egui::Context) -> Self {
         Self {
             status: String::new(),
             integration_installed: check_integration_installed(),
             update_state: UpdateState::Idle,
-            update_check_rx: Some(spawn_update_check()),
+            update_check_rx: Some(spawn_update_check(ctx)),
             update_install_rx: None,
         }
     }
@@ -236,7 +249,8 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         ui.label(format!("新しいバージョン v{} があります。", info.version));
                         if ui.button("アップデートする").clicked() {
-                            self.update_install_rx = Some(spawn_update_install(info.clone()));
+                            self.update_install_rx =
+                                Some(spawn_update_install(ui.ctx().clone(), info.clone()));
                             self.update_state = UpdateState::Installing(info);
                         }
                     });
@@ -254,7 +268,9 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         ui.label("アップデートが完了しました。再起動してください。");
                         if ui.button("再起動する").clicked() {
-                            restart_application();
+                            if let Err(e) = restart_application() {
+                                self.status = e;
+                            }
                         }
                     });
                 });
@@ -266,7 +282,8 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         ui.label(format!("アップデートに失敗しました: {message}"));
                         if ui.button("再試行").clicked() {
-                            self.update_install_rx = Some(spawn_update_install(info.clone()));
+                            self.update_install_rx =
+                                Some(spawn_update_install(ui.ctx().clone(), info.clone()));
                             self.update_state = UpdateState::Installing(info);
                         }
                     });
