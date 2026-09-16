@@ -21,3 +21,7 @@ quick-xml = "0.42.0"
 # 対象は日本の学校・自治体から届く一般的なZIP(deflate/無圧縮)のみ。
 # bzip2/lzma/zstd/暗号化等はスコープ外なのでdeflateのみ有効化。
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+ureq = "2.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

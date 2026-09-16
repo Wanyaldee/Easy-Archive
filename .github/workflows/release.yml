@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      # 第三者アクションはミュータブルなref(タグ/ブランチ)ではなく、確認済みの
+      # 完全なコミットSHAに固定する。このワークフローが生成する.debはユーザーの
+      # マシンでpkexec経由でroot権限インストールされるため、ci.ymlの検証専用
+      # ビルドとは異なりアクションの改竄が実質的な影響を持つ(レビュー時点で
+      # `git ls-remote`により解決したSHA。末尾のコメントは可読性のためのタグ名)。
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify tag matches crates/gui/Cargo.toml version
+        run: |
+          CARGO_VERSION=$(grep -m1 '^version' crates/gui/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          if [ "${TAG#v}" != "$CARGO_VERSION" ]; then
+            echo "タグ($TAG)とcrates/gui/Cargo.tomlのversion($CARGO_VERSION)が一致しません" >&2
+            exit 1
+          fi
+      - name: Install GUI build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      # ci.ymlのdeb-packageジョブとビルド手順を意図的に重複させている。
+      # 変更する際はci.ymlのコメント(deb-packageジョブ)と合わせて確認すること。
+      - run: cargo install cargo-deb --version "^3.7"
+      - run: cargo build --release --workspace
+      - run: (cd crates/gui && cargo deb --no-build)
+      - name: Generate checksums
+        # `SHA256SUMS.txt`の2列目はファイル名のみにする必要がある
+        # (crates/core/src/update.rsのextract_checksum_forがdeb_urlの
+        # ファイル名部分と完全一致で照合するため)。target/debian内で
+        # sha256sumを実行し、パスを含まないファイル名にする。
+        # 注意: このチェックサムは転送中の破損・改竄からダウンロードを守るのみで、
+        # ビルドパイプライン自体の侵害(コード署名なし)に対する保護にはならない。
+        run: (cd target/debian && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" \
+            --title "Easy Archive $TAG" \
+            --generate-notes \
+            target/debian/*.deb \
+            target/debian/SHA256SUMS.txt

@@ -19,6 +19,8 @@ jobs:
   # --release --workspace → cargo deb --no-build)は`packaging/build-deb.sh`と
   # 意図的に重複させている(build-deb.shは対話的な`read`で確認を取る作りのため
   # CIからそのまま呼べない)。どちらかを変更したら必ずもう一方も合わせること。
+  # `.github/workflows/release.yml`(タグpush時のリリースビルド)も同じビルド
+  # レシピをさらに重複させているため、変更時はそちらも合わせて確認すること。
   deb-package:
     runs-on: ubuntu-latest
     steps:
