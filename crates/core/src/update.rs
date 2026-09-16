@@ -4,6 +4,23 @@
 //! 関数(`check_latest`/`download_and_install`、Task 2で追加)はユニット
 //! テスト対象外(実機検証で担保。設計書「テスト方針」参照)。
 
+use std::io::Read;
+
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+
+#[derive(Deserialize)]
+struct ReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Deserialize)]
+struct ReleaseResponse {
+    tag_name: String,
+    assets: Vec<ReleaseAsset>,
+}
+
 /// GitHub Releases APIの`GET .../releases/latest`から得られる、更新に
 /// 必要な情報。`version`は`tag_name`の先頭`v`を除去した`X.Y.Z`形式。
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -17,8 +34,35 @@ pub struct UpdateInfo {
 /// `SHA256SUMS.txt`という名前のチェックサムアセットのURLを取り出す。
 /// パース失敗、またはいずれかのアセットが見つからない場合は`None`。
 pub fn parse_release_response(body: &str) -> Option<UpdateInfo> {
-    let _ = body;
-    unimplemented!()
+    let response: ReleaseResponse = serde_json::from_str(body).ok()?;
+    let version = response.tag_name.trim_start_matches('v').to_string();
+    let deb_url = response
+        .assets
+        .iter()
+        .find(|a| a.name.ends_with(".deb"))
+        .map(|a| a.browser_download_url.clone())?;
+    let checksum_url = response
+        .assets
+        .iter()
+        .find(|a| a.name == "SHA256SUMS.txt")
+        .map(|a| a.browser_download_url.clone())?;
+    Some(UpdateInfo {
+        version,
+        deb_url,
+        checksum_url,
+    })
+}
+
+fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
+    let s = s.trim_start_matches('v');
+    let mut parts = s.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
 }
 
 /// `current`(例: "0.1.0")と`latest`(例: "0.2.0"、先頭`v`は許容)を比較し、
@@ -26,23 +70,34 @@ pub fn parse_release_response(body: &str) -> Option<UpdateInfo> {
 /// 正しく扱うため、文字列比較ではなく`(u32, u32, u32)`のタプル比較で行う。
 /// どちらかがX.Y.Z形式としてパースできない場合は`None`。
 pub fn is_newer(current: &str, latest: &str) -> Option<bool> {
-    let _ = (current, latest);
-    unimplemented!()
+    let current = parse_version(current)?;
+    let latest = parse_version(latest)?;
+    Some(latest > current)
 }
 
 /// `data`のSHA-256が`expected_hex`(16進数文字列、大文字小文字は区別しない)
 /// と一致するかを判定する。
 pub fn verify_checksum(data: &[u8], expected_hex: &str) -> bool {
-    let _ = (data, expected_hex);
-    unimplemented!()
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let actual = format!("{:x}", hasher.finalize());
+    actual.eq_ignore_ascii_case(expected_hex.trim())
 }
 
 /// `sha256sum`形式(`<16進数ハッシュ>  <ファイル名>`)のチェックサムファイルの
 /// 中身から、`deb_url`のファイル名部分(パス末尾)に一致する行のハッシュ値を
 /// 取り出す。見つからなければエラーメッセージを返す。
 fn extract_checksum_for(checksum_text: &str, deb_url: &str) -> Result<String, String> {
-    let _ = (checksum_text, deb_url);
-    unimplemented!()
+    let filename = deb_url.rsplit('/').next().unwrap_or(deb_url);
+    checksum_text
+        .lines()
+        .find_map(|line| {
+            let mut parts = line.split_whitespace();
+            let hash = parts.next()?;
+            let name = parts.next()?.trim_start_matches('*');
+            (name == filename).then(|| hash.to_string())
+        })
+        .ok_or_else(|| "チェックサムファイルに該当するエントリが見つかりません".to_string())
 }
 
 #[cfg(test)]
