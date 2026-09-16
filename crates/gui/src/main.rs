@@ -1,9 +1,54 @@
 use std::env;
 use std::path::PathBuf;
+use std::sync::mpsc;
 
 use easy_archive_core::auto;
 use easy_archive_core::integration;
+use easy_archive_core::update::{self, UpdateInfo};
 use winit::platform::x11::EventLoopBuilderExtX11;
+
+/// アップデートバナーの表示状態。`Available`以降は`UpdateInfo`を保持し、
+/// インストール失敗時の再試行や完了後の表示切り替えに使う。
+enum UpdateState {
+    Idle,
+    Available(UpdateInfo),
+    Installing(UpdateInfo),
+    Done,
+    Error(UpdateInfo, String),
+}
+
+/// 起動時にバックグラウンドスレッドでGitHub Releaseの新バージョンを確認
+/// する。ネットワーク待ちでUIスレッドをブロックしないよう、結果は
+/// `mpsc::channel`経由でUIスレッドが毎フレーム`try_recv`で受け取る。
+fn spawn_update_check() -> mpsc::Receiver<Option<UpdateInfo>> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = update::check_latest(env!("CARGO_PKG_VERSION"));
+        let _ = tx.send(result);
+    });
+    rx
+}
+
+/// 「アップデートする」ボタン押下時に呼ぶ。ダウンロード・チェックサム
+/// 検証・`pkexec`実行(認証ダイアログ待ちを含む)はすべて時間がかかるため、
+/// 別スレッドで行い、結果をチャネル経由でUIスレッドに返す。
+fn spawn_update_install(info: UpdateInfo) -> mpsc::Receiver<Result<(), String>> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = update::download_and_install(&info);
+        let _ = tx.send(result);
+    });
+    rx
+}
+
+/// アップデート適用後にGUIを再起動する。`.deb`インストール直後は
+/// `env::current_exe()`(`/proc/self/exe`)が置き換え前の(削除済み)inodeを
+/// 指したままになりうる(ADR 0007の`resolve_cli_binary_path`と同種の理由)
+/// ため使わず、`.deb`のインストール先として固定の既知パスを直接起動する。
+fn restart_application() {
+    let _ = std::process::Command::new("/usr/bin/easy-archive-gui").spawn();
+    std::process::exit(0);
+}
 
 fn main() -> eframe::Result<()> {
     let mut options = eframe::NativeOptions::default();
@@ -103,6 +148,9 @@ fn install_integration() -> String {
 struct App {
     status: String,
     integration_installed: bool,
+    update_state: UpdateState,
+    update_check_rx: Option<mpsc::Receiver<Option<UpdateInfo>>>,
+    update_install_rx: Option<mpsc::Receiver<Result<(), String>>>,
 }
 
 impl Default for App {
@@ -110,12 +158,50 @@ impl Default for App {
         Self {
             status: String::new(),
             integration_installed: check_integration_installed(),
+            update_state: UpdateState::Idle,
+            update_check_rx: Some(spawn_update_check()),
+            update_install_rx: None,
         }
     }
 }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if let Some(rx) = &self.update_check_rx {
+            match rx.try_recv() {
+                Ok(Some(info)) => {
+                    self.update_state = UpdateState::Available(info);
+                    self.update_check_rx = None;
+                }
+                Ok(None) => {
+                    self.update_check_rx = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.update_check_rx = None;
+                }
+            }
+        }
+
+        if let Some(rx) = &self.update_install_rx {
+            match rx.try_recv() {
+                Ok(Ok(())) => {
+                    self.update_state = UpdateState::Done;
+                    self.update_install_rx = None;
+                }
+                Ok(Err(e)) => {
+                    if let UpdateState::Installing(info) = &self.update_state {
+                        self.update_state = UpdateState::Error(info.clone(), e);
+                    }
+                    self.update_install_rx = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.update_install_rx = None;
+                }
+            }
+        }
+
         let dropped: Vec<PathBuf> = ui.ctx().input(|i| {
             i.raw
                 .dropped_files
@@ -140,6 +226,52 @@ impl eframe::App for App {
                     }
                 });
             });
+        }
+
+        match &self.update_state {
+            UpdateState::Idle => {}
+            UpdateState::Available(info) => {
+                let info = info.clone();
+                egui::Panel::top("update_banner").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("新しいバージョン v{} があります。", info.version));
+                        if ui.button("アップデートする").clicked() {
+                            self.update_install_rx = Some(spawn_update_install(info.clone()));
+                            self.update_state = UpdateState::Installing(info);
+                        }
+                    });
+                });
+            }
+            UpdateState::Installing(_) => {
+                egui::Panel::top("update_banner").show(ui, |ui| {
+                    ui.label(
+                        "アップデートをインストール中です…(認証ダイアログが表示されたら許可してください)",
+                    );
+                });
+            }
+            UpdateState::Done => {
+                egui::Panel::top("update_banner").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("アップデートが完了しました。再起動してください。");
+                        if ui.button("再起動する").clicked() {
+                            restart_application();
+                        }
+                    });
+                });
+            }
+            UpdateState::Error(info, message) => {
+                let info = info.clone();
+                let message = message.clone();
+                egui::Panel::top("update_banner").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("アップデートに失敗しました: {message}"));
+                        if ui.button("再試行").clicked() {
+                            self.update_install_rx = Some(spawn_update_install(info.clone()));
+                            self.update_state = UpdateState::Installing(info);
+                        }
+                    });
+                });
+            }
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
