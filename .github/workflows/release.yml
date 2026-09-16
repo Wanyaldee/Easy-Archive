@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GUI build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@stable
+      # ci.ymlのdeb-packageジョブとビルド手順を意図的に重複させている。
+      # 変更する際はci.ymlのコメント(deb-packageジョブ)と合わせて確認すること。
+      - run: cargo install cargo-deb --version "^3.7"
+      - run: cargo build --release --workspace
+      - run: (cd crates/gui && cargo deb --no-build)
+      - name: Generate checksums
+        # `SHA256SUMS.txt`の2列目はファイル名のみにする必要がある
+        # (crates/core/src/update.rsのextract_checksum_forがdeb_urlの
+        # ファイル名部分と完全一致で照合するため)。target/debian内で
+        # sha256sumを実行し、パスを含まないファイル名にする。
+        run: (cd target/debian && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Easy Archive ${{ github.ref_name }}" \
+            --generate-notes \
+            target/debian/*.deb \
+            target/debian/SHA256SUMS.txt
