@@ -100,6 +100,81 @@ fn extract_checksum_for(checksum_text: &str, deb_url: &str) -> Result<String, St
         .ok_or_else(|| "チェックサムファイルに該当するエントリが見つかりません".to_string())
 }
 
+fn fetch_latest_release_json() -> Result<String, String> {
+    ureq::get("https://api.github.com/repos/Wanyaldee/Easy-Archive/releases/latest")
+        .set("User-Agent", "easy-archive-update-checker")
+        .set("Accept", "application/vnd.github+json")
+        .call()
+        .map_err(|e| format!("GitHub APIへの問い合わせに失敗しました: {e}"))?
+        .into_string()
+        .map_err(|e| format!("GitHub APIの応答を読み取れませんでした: {e}"))
+}
+
+/// 起動時チェック用。ネットワークエラー・パース失敗・更新なしはすべて`None`
+/// として扱う(呼び出し側は理由を区別せず、バナーを出さないだけでよいため)。
+pub fn check_latest(current_version: &str) -> Option<UpdateInfo> {
+    let body = fetch_latest_release_json().ok()?;
+    let info = parse_release_response(&body)?;
+    if is_newer(current_version, &info.version)? {
+        Some(info)
+    } else {
+        None
+    }
+}
+
+fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    ureq::get(url)
+        .set("User-Agent", "easy-archive-update-checker")
+        .call()
+        .map_err(|e| format!("ダウンロードに失敗しました: {e}"))?
+        .into_reader()
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("ダウンロードに失敗しました: {e}"))?;
+    Ok(buf)
+}
+
+/// `.deb`とチェックサムファイルをダウンロードし、SHA-256を照合したうえで
+/// `pkexec apt-get install -y <path>`を実行する。呼び出し側(GUI)はこれを
+/// バックグラウンドスレッドから呼ぶこと(ネットワーク待ち・認証ダイアログの
+/// 待ちでUIスレッドをブロックしないため)。
+pub fn download_and_install(info: &UpdateInfo) -> Result<(), String> {
+    let deb_bytes = download_bytes(&info.deb_url)?;
+    let checksum_bytes = download_bytes(&info.checksum_url)?;
+    let checksum_text = String::from_utf8(checksum_bytes)
+        .map_err(|e| format!("チェックサムファイルの読み取りに失敗しました: {e}"))?;
+    let expected_hex = extract_checksum_for(&checksum_text, &info.deb_url)?;
+    if !verify_checksum(&deb_bytes, &expected_hex) {
+        return Err("ダウンロードしたファイルの検証に失敗しました".to_string());
+    }
+
+    let deb_path = std::env::temp_dir().join("easy-archive-update.deb");
+    std::fs::write(&deb_path, &deb_bytes)
+        .map_err(|e| format!("ファイルの書き込みに失敗しました: {e}"))?;
+
+    let status = std::process::Command::new("pkexec")
+        .arg("apt-get")
+        .arg("install")
+        .arg("-y")
+        .arg(&deb_path)
+        .status()
+        .map_err(|e| format!("インストールコマンドの起動に失敗しました: {e}"));
+    let _ = std::fs::remove_file(&deb_path);
+    let status = status?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        match status.code() {
+            // pkexecは認証ダイアログをキャンセルされた場合126、認証自体が
+            // 得られなかった場合127を返す(man pkexecのRETURN VALUEで確認済み)。
+            Some(126) => Err("認証がキャンセルされました".to_string()),
+            Some(127) => Err("認証に失敗しました".to_string()),
+            _ => Err("インストールに失敗しました".to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
